@@ -101,7 +101,6 @@ func (s *Server) recv(c *net.UDPConn) {
 	for !s.shutdown {
 		n, from, err := c.ReadFrom(buf)
 		if err != nil {
-			log.Printf("[ERR] mdns: Failed to read packet: %v", err)
 			continue
 		}
 		if err := s.parsePacket(buf[:n], from); err != nil {
@@ -122,19 +121,22 @@ func (s *Server) parsePacket(packet []byte, from net.Addr) error {
 
 // handleQuery is used to handle an incoming query
 func (s *Server) handleQuery(query *dns.Msg, from net.Addr) error {
+	log.Printf("[DEBUG] mdns: query from %v", from)
 	var resp dns.Msg
 	resp.SetReply(query)
 
 	// Handle each question
 	if len(query.Question) > 0 {
 		if err := s.handleQuestion(query.Question[0], &resp); err != nil {
-			log.Printf("[ERR] mdns: Failed to handle question %v: %v",
+			log.Printf("[ERR] mdns: failed to handle question %v: %v",
 				query.Question[0], err)
 		}
 	}
 
 	// Check if there is an answer
-	if len(query.Answer) > 0 {
+	log.Printf("[DEBUG] mdns: %d records for %v",
+		len(resp.Answer), from)
+	if len(resp.Answer) > 0 {
 		return s.sendResponse(&resp, from)
 	}
 	return nil
