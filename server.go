@@ -121,7 +121,6 @@ func (s *Server) parsePacket(packet []byte, from net.Addr) error {
 
 // handleQuery is used to handle an incoming query
 func (s *Server) handleQuery(query *dns.Msg, from net.Addr) error {
-	log.Printf("[DEBUG] mdns: query from %v", from)
 	var resp dns.Msg
 	resp.SetReply(query)
 
@@ -134,8 +133,6 @@ func (s *Server) handleQuery(query *dns.Msg, from net.Addr) error {
 	}
 
 	// Check if there is an answer
-	log.Printf("[DEBUG] mdns: %d records for %v",
-		len(resp.Answer), from)
 	if len(resp.Answer) > 0 {
 		return s.sendResponse(&resp, from)
 	}
