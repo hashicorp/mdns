@@ -29,6 +29,11 @@ var (
 type Config struct {
 	// Zone must be provided to support responding to queries
 	Zone Zone
+
+	// Iface if provided binds the multicast listener to the given
+	// interface. If not provided, the system default multicase interface
+	// is used.
+	Iface *net.Interface
 }
 
 // mDNS server is used to listen for mDNS queries and respond if we
@@ -47,11 +52,11 @@ type Server struct {
 // NewServer is used to create a new mDNS server from a config
 func NewServer(config *Config) (*Server, error) {
 	// Create the listeners
-	ipv4List, err := net.ListenMulticastUDP("udp4", nil, ipv4Addr)
+	ipv4List, err := net.ListenMulticastUDP("udp4", config.Iface, ipv4Addr)
 	if err != nil {
 		log.Printf("[ERR] mdns: Failed to start IPv4 listener: %v", err)
 	}
-	ipv6List, err := net.ListenMulticastUDP("udp6", nil, ipv6Addr)
+	ipv6List, err := net.ListenMulticastUDP("udp6", config.Iface, ipv6Addr)
 	if err != nil {
 		log.Printf("[ERR] mdns: Failed to start IPv6 listener: %v", err)
 	}
