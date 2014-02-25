@@ -8,7 +8,7 @@ import (
 
 func TestServer_StartStop(t *testing.T) {
 	s := makeService(t)
-	serv, err := NewServer(&Config{s})
+	serv, err := NewServer(&Config{Zone: s})
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -19,7 +19,7 @@ func TestServer_Lookup(t *testing.T) {
 	s := makeService(t)
 	s.Service = "_foobar._tcp"
 	s.Init()
-	serv, err := NewServer(&Config{s})
+	serv, err := NewServer(&Config{Zone: s})
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
@@ -49,7 +49,13 @@ func TestServer_Lookup(t *testing.T) {
 		}
 	}()
 
-	err = LookupDomain("_foobar._tcp", "local", 50*time.Millisecond, entries)
+	params := &QueryParam{
+		Service: "_foobar._tcp",
+		Domain:  "local",
+		Timeout: 50 * time.Millisecond,
+		Entries: entries,
+	}
+	err = Query(params)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
