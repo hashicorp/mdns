@@ -66,7 +66,10 @@ func Query(params *QueryParam) error {
 		}
 	}
 
-	// Ensure a timeout
+	// Ensure defaults are set
+	if params.Domain == "" {
+		params.Domain = "local"
+	}
 	if params.Timeout == 0 {
 		params.Timeout = time.Second
 	}
