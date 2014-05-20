@@ -188,8 +188,13 @@ func (c *client) query(params *QueryParam) error {
 					inp = ensureName(inprogress, rr.Ptr)
 
 				case *dns.SRV:
+					// Check for a target mismatch
+					if rr.Target != rr.Hdr.Name {
+						alias(inprogress, rr.Hdr.Name, rr.Target)
+					}
+
 					// Get the port
-					inp = ensureName(inprogress, rr.Target)
+					inp = ensureName(inprogress, rr.Hdr.Name)
 					inp.Port = int(rr.Port)
 
 				case *dns.TXT:
@@ -281,4 +286,10 @@ func ensureName(inprogress map[string]*ServiceEntry, name string) *ServiceEntry 
 	}
 	inprogress[name] = inp
 	return inp
+}
+
+// alias is used to setup an alias between two entries
+func alias(inprogress map[string]*ServiceEntry, src, dst string) {
+	srcEntry := ensureName(inprogress, src)
+	inprogress[dst] = srcEntry
 }
