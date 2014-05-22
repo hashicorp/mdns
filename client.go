@@ -195,6 +195,7 @@ func (c *client) query(params *QueryParam) error {
 
 					// Get the port
 					inp = ensureName(inprogress, rr.Hdr.Name)
+					inp.Name = rr.Target
 					inp.Port = int(rr.Port)
 
 				case *dns.TXT:
