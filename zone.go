@@ -7,6 +7,11 @@ import (
 	"strings"
 )
 
+const (
+	// defaultTtl controls how long we set the TTL for records
+	defaultTTL = 10
+)
+
 // Zone is the interface used to integrate with the server and
 // to serve records dynamically
 type Zone interface {
@@ -83,7 +88,7 @@ func (m *MDNSService) serviceRecords(q dns.Question) []dns.RR {
 				Name:   q.Name,
 				Rrtype: dns.TypePTR,
 				Class:  dns.ClassINET,
-				Ttl:    0,
+				Ttl:    defaultTTL,
 			},
 			Ptr: m.instanceAddr,
 		}
@@ -130,7 +135,7 @@ func (m *MDNSService) instanceRecords(q dns.Question) []dns.RR {
 				Name:   q.Name,
 				Rrtype: dns.TypeA,
 				Class:  dns.ClassINET,
-				Ttl:    0,
+				Ttl:    defaultTTL,
 			},
 			A: ipv4,
 		}
@@ -147,7 +152,7 @@ func (m *MDNSService) instanceRecords(q dns.Question) []dns.RR {
 				Name:   q.Name,
 				Rrtype: dns.TypeAAAA,
 				Class:  dns.ClassINET,
-				Ttl:    0,
+				Ttl:    defaultTTL,
 			},
 			AAAA: ipv6,
 		}
@@ -160,7 +165,7 @@ func (m *MDNSService) instanceRecords(q dns.Question) []dns.RR {
 				Name:   q.Name,
 				Rrtype: dns.TypeSRV,
 				Class:  dns.ClassINET,
-				Ttl:    0,
+				Ttl:    defaultTTL,
 			},
 			Priority: 10,
 			Weight:   1,
@@ -188,7 +193,7 @@ func (m *MDNSService) instanceRecords(q dns.Question) []dns.RR {
 				Name:   q.Name,
 				Rrtype: dns.TypeTXT,
 				Class:  dns.ClassINET,
-				Ttl:    0,
+				Ttl:    defaultTTL,
 			},
 			Txt: []string{m.Info},
 		}
