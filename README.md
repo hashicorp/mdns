@@ -16,7 +16,6 @@ Using the library is very simple, here is an example of publishing a service ent
     service := &mdns.MDNSService{
 	    Instance: host,
 	    Service: "_foobar._tcp",
-	    Addr:    []byte{127,0,0,1},
 	    Port:    8000,
 	    Info:    "My awesome service",
     }
