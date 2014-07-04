@@ -217,7 +217,7 @@ func (c *client) query(params *QueryParam) error {
 			}
 
 			// Check if this entry is complete
-			if inp.complete() && !inp.sent {
+			if inp.complete() {
 				inp.sent = true
 				select {
 				case params.Entries <- inp:
@@ -280,6 +280,7 @@ func (c *client) recv(l *net.UDPConn, msgCh chan *dns.Msg) {
 // ensureName is used to ensure the named node is in progress
 func ensureName(inprogress map[string]*ServiceEntry, name string) *ServiceEntry {
 	if inp, ok := inprogress[name]; ok {
+                inp.sent = false
 		return inp
 	}
 	inp := &ServiceEntry{
