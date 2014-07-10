@@ -217,7 +217,10 @@ func (c *client) query(params *QueryParam) error {
 			}
 
 			// Check if this entry is complete
-			if inp.complete() && !inp.sent {
+			if inp.complete() {
+				if inp.sent {
+					continue
+				}
 				inp.sent = true
 				select {
 				case params.Entries <- inp:
