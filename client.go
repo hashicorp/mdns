@@ -25,7 +25,6 @@ type ServiceEntry struct {
 
 // complete is used to check if we have all the info we need
 func (s *ServiceEntry) complete() bool {
-	fmt.Println(s)
 	return s.Addr != nil && s.Port != 0 && s.hasTXT
 }
 
@@ -35,7 +34,8 @@ type QueryParam struct {
 	Domain    string               // Lookup domain, default "local"
 	Timeout   time.Duration        // Lookup timeout, default 1 second
 	Interface *net.Interface       // Multicast interface to use
-	Entries   chan<- *ServiceEntry // Entries Channel
+	QueryType uint16               // dns Type Constant to use
+	Entries   chan<- dns.RR // Entries Channel
 }
 
 // DefaultParams is used to return a default set of QueryParam's
@@ -43,8 +43,9 @@ func DefaultParams(service string) *QueryParam {
 	return &QueryParam{
 		Service: service,
 		Domain:  "local",
+		QueryType: dns.TypeANY,
 		Timeout: time.Second,
-		Entries: make(chan *ServiceEntry),
+		Entries: make(chan dns.RR),
 	}
 }
 
@@ -80,7 +81,7 @@ func Query(params *QueryParam) error {
 }
 
 // Lookup is the same as Query, however it uses all the default parameters
-func Lookup(service string, entries chan<- *ServiceEntry) error {
+func Lookup(service string, entries chan<- dns.RR) error {
 	params := DefaultParams(service)
 	params.Entries = entries
 	return Query(params)
@@ -142,7 +143,7 @@ func (c *client) Close() error {
 	return nil
 }
 
-// setInterface is used to set the query interface, uses sytem
+// setInterface is used to set the query interface, uses system
 // default if not provided
 func (c *client) setInterface(iface *net.Interface) error {
 	p := ipv4.NewPacketConn(c.ipv4List)
@@ -160,6 +161,7 @@ func (c *client) setInterface(iface *net.Interface) error {
 func (c *client) query(params *QueryParam) error {
 	// Create the service name
 	serviceAddr := fmt.Sprintf("%s.%s.", trimDot(params.Service), trimDot(params.Domain))
+	serviceAddr = strings.Replace(serviceAddr, " ", "\\ ", -1)
 
 	// Start listening for response packets
 	msgCh := make(chan *dns.Msg, 32)
@@ -168,55 +170,20 @@ func (c *client) query(params *QueryParam) error {
 
 	// Send the query
 	m := new(dns.Msg)
-	m.SetQuestion(serviceAddr, dns.TypeANY)
+	m.SetQuestion(serviceAddr, params.QueryType)
 	if err := c.sendQuery(m); err != nil {
 		return nil
 	}
-
-	// Map the in-progress responses
-	inprogress := make(map[string]*ServiceEntry)
 
 	// Listen until we reach the timeout
 	finish := time.After(params.Timeout)
 	for {
 		select {
 		case resp := <-msgCh:
-			var inp *ServiceEntry
 			for _, answer := range resp.Answer {
-				switch rr := answer.(type) {
-				case *dns.PTR:
-					// Create new entry for this
-					inp = ensureName(inprogress, rr.Ptr)
-
-				case *dns.SRV:
-					// Check for a target mismatch
-					if rr.Target != rr.Hdr.Name {
-						alias(inprogress, rr.Hdr.Name, rr.Target)
-					}
-
-					// Get the port
-					inp = ensureName(inprogress, rr.Hdr.Name)
-					inp.Name = rr.Target
-					inp.Port = int(rr.Port)
-
-				case *dns.TXT:
-					// Pull out the txt
-					inp = ensureName(inprogress, rr.Hdr.Name)
-					inp.Info = strings.Join(rr.Txt, "|")
-					inp.hasTXT = true
-
-				case *dns.A:
-					// Pull out the IP
-					inp = ensureName(inprogress, rr.Hdr.Name)
-					inp.Addr = rr.A
-
-				case *dns.AAAA:
-					// Pull out the IP
-					inp = ensureName(inprogress, rr.Hdr.Name)
-					inp.Addr = rr.AAAA
+				if (answer.Header().Name == serviceAddr) && (params.QueryType == dns.TypeANY || answer.Header().Rrtype == params.QueryType) {
+					params.Entries <- answer
 				}
-
-				params.Entries <- inp
 			}
 		case <-finish:
 			return nil
