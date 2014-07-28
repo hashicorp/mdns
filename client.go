@@ -25,6 +25,7 @@ type ServiceEntry struct {
 
 // complete is used to check if we have all the info we need
 func (s *ServiceEntry) complete() bool {
+	fmt.Println(s)
 	return s.Addr != nil && s.Port != 0 && s.hasTXT
 }
 
@@ -100,11 +101,11 @@ type client struct {
 // for records
 func newClient() (*client, error) {
 	// Create a IPv4 listener
-	ipv4, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
+	ipv4, err := net.ListenMulticastUDP("udp4", nil, ipv4Addr)
 	if err != nil {
 		log.Printf("[ERR] mdns: Failed to bind to udp4 port: %v", err)
 	}
-	ipv6, err := net.ListenUDP("udp6", &net.UDPAddr{IP: net.IPv6zero, Port: 0})
+	ipv6, err := net.ListenMulticastUDP("udp6", nil, ipv6Addr)
 	if err != nil {
 		log.Printf("[ERR] mdns: Failed to bind to udp6 port: %v", err)
 	}
@@ -214,25 +215,8 @@ func (c *client) query(params *QueryParam) error {
 					inp = ensureName(inprogress, rr.Hdr.Name)
 					inp.Addr = rr.AAAA
 				}
-			}
 
-			// Check if this entry is complete
-			if inp.complete() {
-				if inp.sent {
-					continue
-				}
-				inp.sent = true
-				select {
-				case params.Entries <- inp:
-				default:
-				}
-			} else {
-				// Fire off a node specific query
-				m := new(dns.Msg)
-				m.SetQuestion(inp.Name, dns.TypeANY)
-				if err := c.sendQuery(m); err != nil {
-					log.Printf("[ERR] mdns: Failed to query instance %s: %v", inp.Name, err)
-				}
+				params.Entries <- inp
 			}
 		case <-finish:
 			return nil
