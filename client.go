@@ -14,10 +14,11 @@ import (
 
 // ServiceEntry is returned after we query for a service
 type ServiceEntry struct {
-	Name string
-	Addr net.IP
-	Port int
-	Info string
+	Name     string
+	IPv4Addr net.IP
+	IPv6Addr net.IP
+	Port     int
+	Info     string
 
 	hasTXT bool
 	sent   bool
@@ -25,7 +26,7 @@ type ServiceEntry struct {
 
 // complete is used to check if we have all the info we need
 func (s *ServiceEntry) complete() bool {
-	return s.Addr != nil && s.Port != 0 && s.hasTXT
+	return s.IPv4Addr != nil && s.Port != 0 && s.hasTXT
 }
 
 // QueryParam is used to customize how a Lookup is performed
@@ -207,12 +208,12 @@ func (c *client) query(params *QueryParam) error {
 				case *dns.A:
 					// Pull out the IP
 					inp = ensureName(inprogress, rr.Hdr.Name)
-					inp.Addr = rr.A
+					inp.IPv4Addr = rr.A
 
 				case *dns.AAAA:
 					// Pull out the IP
 					inp = ensureName(inprogress, rr.Hdr.Name)
-					inp.Addr = rr.AAAA
+					inp.IPv6Addr = rr.AAAA
 				}
 			}
 
