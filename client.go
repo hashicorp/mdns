@@ -7,55 +7,71 @@ import (
 	"github.com/miekg/dns"
 	"log"
 	"net"
-	"strings"
 	"sync"
 	"time"
+	//"strings"
+	"bytes"
 )
-
-// ServiceEntry is returned after we query for a service
-type ServiceEntry struct {
-	Name string
-	Addr net.IP
-	Port int
-	Info string
-
-	hasTXT bool
-	sent   bool
-}
-
-// complete is used to check if we have all the info we need
-func (s *ServiceEntry) complete() bool {
-	return s.Addr != nil && s.Port != 0 && s.hasTXT
-}
 
 // QueryParam is used to customize how a Lookup is performed
 type QueryParam struct {
-	Service   string               // Service to lookup
-	Domain    string               // Lookup domain, default "local"
+	RecordName   string               // RecordName to lookup
 	Timeout   time.Duration        // Lookup timeout, default 1 second
 	Interface *net.Interface       // Multicast interface to use
 	QueryType uint16               // dns Type Constant to use
 	Entries   chan<- dns.RR // Entries Channel
 }
 
+type operationType string
+const (
+	SUBSCRIBE operationType = "SUBSCRIBE"
+	UNSUBSCRIBE operationType = "UNSUBSCRIBE"
+	CLOSE operationType = "CLOSE"
+)
+
+type subscriptionMessage struct {
+	Operation operationType
+	Channel chan<- dns.RR
+}
+
 // DefaultParams is used to return a default set of QueryParam's
-func DefaultParams(service string) *QueryParam {
+func DefaultParams(recordName string) *QueryParam {
 	return &QueryParam{
-		Service: service,
-		Domain:  "local",
+		RecordName: recordName,
 		QueryType: dns.TypeANY,
 		Timeout: time.Second,
 		Entries: make(chan dns.RR),
 	}
 }
 
-// Query looks up a given service, in a domain, waiting at most
+func EscapeName(name string) string {
+	var outputBuffer bytes.Buffer
+
+	previousIsSlash := false
+	for _, c := range name {
+		if c == ' ' && !previousIsSlash {
+			outputBuffer.WriteRune('\\')
+		}
+
+		outputBuffer.WriteRune(c)
+
+		if c == '\\' {
+			previousIsSlash = true
+		} else {
+			previousIsSlash = false
+		}
+	}
+
+	return outputBuffer.String()
+}
+
+// Query looks up a given recordName, in a domain, waiting at most
 // for a timeout before finishing the query. The results are streamed
 // to a channel. Sends will not block, so clients should make sure to
 // either read or buffer.
 func Query(params *QueryParam) error {
 	// Create a new client
-	client, err := newClient()
+	client, err := NewClient()
 	if err != nil {
 		return err
 	}
@@ -63,32 +79,28 @@ func Query(params *QueryParam) error {
 
 	// Set the multicast interface
 	if params.Interface != nil {
-		if err := client.setInterface(params.Interface); err != nil {
+		if err := client.SetInterface(params.Interface); err != nil {
 			return err
 		}
 	}
 
-	// Ensure defaults are set
-	if params.Domain == "" {
-		params.Domain = "local"
-	}
 	if params.Timeout == 0 {
 		params.Timeout = time.Second
 	}
 
 	// Run the query
-	return client.query(params)
+	return client.Query(params)
 }
 
 // Lookup is the same as Query, however it uses all the default parameters
-func Lookup(service string, entries chan<- dns.RR) error {
-	params := DefaultParams(service)
+func Lookup(recordName string, entries chan<- dns.RR) error {
+	params := DefaultParams(recordName)
 	params.Entries = entries
 	return Query(params)
 }
 
 // Client provides a query interface that can be used to
-// search for service providers using mDNS
+// search for recordName providers using mDNS
 type client struct {
 	ipv4List *net.UDPConn
 	ipv6List *net.UDPConn
@@ -96,11 +108,16 @@ type client struct {
 	closed    bool
 	closedCh  chan struct{}
 	closeLock sync.Mutex
+
+	entryCache []dns.RR
+	msgChan chan *dns.Msg
+	subscriptionChannel chan subscriptionMessage
+	//subscriberChans []chan dns.RR
 }
 
 // NewClient creates a new mdns Client that can be used to query
 // for records
-func newClient() (*client, error) {
+func NewClient() (*client, error) {
 	// Create a IPv4 listener
 	ipv4, err := net.ListenMulticastUDP("udp4", nil, ipv4Addr)
 	if err != nil {
@@ -119,8 +136,65 @@ func newClient() (*client, error) {
 		ipv4List: ipv4,
 		ipv6List: ipv6,
 		closedCh: make(chan struct{}),
+		entryCache: make([]dns.RR, 0),
+		msgChan: make(chan *dns.Msg, 32),
+		subscriptionChannel: make(chan subscriptionMessage, 32),
+		//subscriberChans: make([]chan dns.RR, 0),
 	}
+	go c.cacheAll()
+	go c.broadcastAll()
 	return c, nil
+}
+
+func (c *client) cacheAll() {
+	channel := c.Subscribe()
+	for answer := range channel {
+		// TODO: suppress duplicates and expire cache entries
+		c.entryCache = append(c.entryCache, answer)
+		//fmt.Println("Cache Add: " + answer.String())
+	}
+}
+
+func (c *client) broadcastAll() {
+	go c.recv(c.ipv4List, c.msgChan)
+	go c.recv(c.ipv6List, c.msgChan)
+
+	subscriberChans := make([]chan<- dns.RR, 0)
+
+	for {
+		select {
+		case msg := <- c.msgChan:
+			for _, answer := range msg.Answer {
+				for _, channel := range subscriberChans {
+					channel <- answer
+				}
+			}
+			for _, answer := range msg.Extra {
+				for _, channel := range subscriberChans {
+					channel <- answer
+				}
+			}
+
+		case msg := <- c.subscriptionChannel:
+			switch msg.Operation {
+			case SUBSCRIBE:
+				//fmt.Println("Subscribe")
+				subscriberChans = append(subscriberChans, msg.Channel)
+				break
+			case UNSUBSCRIBE:
+				//fmt.Println("Unsubscribe")
+				for idx, channel := range subscriberChans {
+					if channel == msg.Channel {
+						subscriberChans = append(subscriberChans[:idx],subscriberChans[idx + 1:]...)
+						break
+					}
+				}
+				break
+			case CLOSE:
+				return
+			}
+		}
+	}
 }
 
 // Close is used to cleanup the client
@@ -145,7 +219,7 @@ func (c *client) Close() error {
 
 // setInterface is used to set the query interface, uses system
 // default if not provided
-func (c *client) setInterface(iface *net.Interface) error {
+func (c *client) SetInterface(iface *net.Interface) error {
 	p := ipv4.NewPacketConn(c.ipv4List)
 	if err := p.SetMulticastInterface(iface); err != nil {
 		return err
@@ -157,39 +231,55 @@ func (c *client) setInterface(iface *net.Interface) error {
 	return nil
 }
 
-// query is used to perform a lookup and stream results
-func (c *client) query(params *QueryParam) error {
-	// Create the service name
-	serviceAddr := fmt.Sprintf("%s.%s.", trimDot(params.Service), trimDot(params.Domain))
-	serviceAddr = strings.Replace(serviceAddr, " ", "\\ ", -1)
+func (c *client) Subscribe() chan dns.RR {
+	channel := make(chan dns.RR)
+	c.subscriptionChannel <- subscriptionMessage{
+		Operation: SUBSCRIBE,
+		Channel: channel,
+	}
+	return channel
+}
 
-	// Start listening for response packets
-	msgCh := make(chan *dns.Msg, 32)
-	go c.recv(c.ipv4List, msgCh)
-	go c.recv(c.ipv6List, msgCh)
+func (c *client) Unsubscribe(channel chan dns.RR) {
+	c.subscriptionChannel <- subscriptionMessage{
+		Operation: UNSUBSCRIBE,
+		Channel: channel,
+	}
+}
+
+// query is used to perform a lookup and stream results
+func (c *client) Query(params *QueryParam) error {
+	// Create the recordName name
+	recordName := EscapeName(params.RecordName)
+	answerChan := c.Subscribe()
+
+	go func() {
+		for answer := range answerChan {
+			if (answer.Header().Name == recordName) && (params.QueryType == dns.TypeANY || answer.Header().Rrtype == params.QueryType) {
+				params.Entries <- answer
+			}
+		}
+	}()
+
+	for _, answer := range c.entryCache {
+		// Replay all entries in the cache
+		answerChan <- answer
+		//fmt.Println("Cache: " + answer.Header().Name)
+	}
 
 	// Send the query
 	m := new(dns.Msg)
-	m.SetQuestion(serviceAddr, params.QueryType)
+	m.SetQuestion(recordName, params.QueryType)
 	if err := c.sendQuery(m); err != nil {
 		return nil
 	}
 
-	// Listen until we reach the timeout
-	finish := time.After(params.Timeout)
-	for {
-		select {
-		case resp := <-msgCh:
-			for _, answer := range resp.Answer {
-				if (answer.Header().Name == serviceAddr) && (params.QueryType == dns.TypeANY || answer.Header().Rrtype == params.QueryType) {
-					params.Entries <- answer
-				}
-			}
-		case <-finish:
-			return nil
-		}
+	select {
+	case <- time.After(params.Timeout):
+		c.Unsubscribe(answerChan)
+		close(answerChan)
+		return nil
 	}
-	return nil
 }
 
 // sendQuery is used to multicast a query out
