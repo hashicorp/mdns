@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/miekg/dns"
 	"net"
+	"os"
 	"strings"
 )
 
@@ -50,9 +51,6 @@ func (m *MDNSService) Init() error {
 	if m.Service == "" {
 		return fmt.Errorf("Missing service name")
 	}
-	if m.Addr == nil && m.HostName == nil {
-		return fmt.Errorf("Missing service host/address")
-	}
 	if m.Port == 0 {
 		return fmt.Errorf("Missing service port")
 	}
@@ -60,9 +58,9 @@ func (m *MDNSService) Init() error {
 	// Get host information
 	hostName, err := os.Hostname()
 	if err == nil {
-		m.HostName = fmt.Sprintf("%s.", m.HostName)
+		m.HostName = fmt.Sprintf("%s.", hostName)
 
-		addrs, err := net.LookupIP(m.GostName)
+		addrs, err := net.LookupIP(m.HostName)
 		if err != nil {
 			// Try appending the host domain suffix and lookup again
 			// (required for Linux-based hosts)
@@ -161,7 +159,9 @@ func (m *MDNSService) instanceRecords(q dns.Question) []dns.RR {
 	case dns.TypeA:
 		// Only handle if we have a ipv4 addr
 		ipv4 := m.Addr.To4()
-		if m.ipv4Addr == nil || ipv4 == nil {
+		if ipv4 != nil {
+			m.ipv4Addr = ipv4
+		} else if m.ipv4Addr == nil {
 			return nil
 		}
 		a := &dns.A{
@@ -171,14 +171,16 @@ func (m *MDNSService) instanceRecords(q dns.Question) []dns.RR {
 				Class:  dns.ClassINET,
 				Ttl:    defaultTTL,
 			},
-			A: m.ipv4Addr || ipv4,
+			A: m.ipv4Addr,
 		}
 		return []dns.RR{a}
 
 	case dns.TypeAAAA:
 		// Only handle if we have a ipv6 addr
 		ipv6 := m.Addr.To16()
-		if m.ipv6Addr == nil || m.Addr.To4() != nil {
+		if ipv6 != nil && m.Addr.To4() == nil {
+			m.ipv6Addr = ipv6
+		} else if m.ipv6Addr == nil && m.Addr.To4() != nil {
 			return nil
 		}
 		a4 := &dns.AAAA{
@@ -188,7 +190,7 @@ func (m *MDNSService) instanceRecords(q dns.Question) []dns.RR {
 				Class:  dns.ClassINET,
 				Ttl:    defaultTTL,
 			},
-			AAAA: m.ipv6Addr || ipv6,
+			AAAA: m.ipv6Addr,
 		}
 		return []dns.RR{a4}
 
