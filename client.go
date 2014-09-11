@@ -15,9 +15,13 @@ import (
 // ServiceEntry is returned after we query for a service
 type ServiceEntry struct {
 	Name string
-	Addr net.IP
+	Host string
+	AddrV4 net.IP
+	AddrV6 net.IP
 	Port int
 	Info string
+
+	Addr net.IP // @Deprecated
 
 	hasTXT bool
 	sent   bool
@@ -25,7 +29,7 @@ type ServiceEntry struct {
 
 // complete is used to check if we have all the info we need
 func (s *ServiceEntry) complete() bool {
-	return s.Addr != nil && s.Port != 0 && s.hasTXT
+	return (s.AddrV4 != nil || s.AddrV6 != nil || s.Addr != nil) && s.Port != 0 && s.hasTXT
 }
 
 // QueryParam is used to customize how a Lookup is performed
@@ -195,7 +199,7 @@ func (c *client) query(params *QueryParam) error {
 
 					// Get the port
 					inp = ensureName(inprogress, rr.Hdr.Name)
-					inp.Name = rr.Target
+					inp.Host = rr.Target
 					inp.Port = int(rr.Port)
 
 				case *dns.TXT:
@@ -207,12 +211,14 @@ func (c *client) query(params *QueryParam) error {
 				case *dns.A:
 					// Pull out the IP
 					inp = ensureName(inprogress, rr.Hdr.Name)
-					inp.Addr = rr.A
+					inp.Addr = rr.A // @Deprecated
+					inp.AddrV4 = rr.A
 
 				case *dns.AAAA:
 					// Pull out the IP
 					inp = ensureName(inprogress, rr.Hdr.Name)
-					inp.Addr = rr.AAAA
+					inp.Addr = rr.AAAA // @Deprecated
+					inp.AddrV6 = rr.AAAA
 				}
 			}
 
