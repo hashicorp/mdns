@@ -109,7 +109,6 @@ type client struct {
 	closedCh  chan struct{}
 	closeLock sync.Mutex
 
-	entryCache []dns.RR
 	msgChan chan *dns.Msg
 	subscriptionChannel chan subscriptionMessage
 	//subscriberChans []chan dns.RR
@@ -136,40 +135,31 @@ func NewClient() (*client, error) {
 		ipv4List: ipv4,
 		ipv6List: ipv6,
 		closedCh: make(chan struct{}),
-		entryCache: make([]dns.RR, 0),
 		msgChan: make(chan *dns.Msg, 32),
 		subscriptionChannel: make(chan subscriptionMessage, 32),
-		//subscriberChans: make([]chan dns.RR, 0),
 	}
-	go c.cacheAll()
 	go c.broadcastAll()
 	return c, nil
-}
-
-func (c *client) cacheAll() {
-	channel := c.Subscribe()
-	for answer := range channel {
-		// TODO: suppress duplicates and expire cache entries
-		c.entryCache = append(c.entryCache, answer)
-		//fmt.Println("Cache Add: " + answer.String())
-	}
 }
 
 func (c *client) broadcastAll() {
 	go c.recv(c.ipv4List, c.msgChan)
 	go c.recv(c.ipv6List, c.msgChan)
 
+	entryCache := make([]dns.RR, 0)
 	subscriberChans := make([]chan<- dns.RR, 0)
 
 	for {
 		select {
 		case msg := <- c.msgChan:
 			for _, answer := range msg.Answer {
+				entryCache = append(entryCache, answer)
 				for _, channel := range subscriberChans {
 					channel <- answer
 				}
 			}
 			for _, answer := range msg.Extra {
+				entryCache = append(entryCache, answer)
 				for _, channel := range subscriberChans {
 					channel <- answer
 				}
@@ -180,6 +170,9 @@ func (c *client) broadcastAll() {
 			case SUBSCRIBE:
 				//fmt.Println("Subscribe")
 				subscriberChans = append(subscriberChans, msg.Channel)
+				for _, entry := range entryCache {
+					msg.Channel <- entry
+				}
 				break
 			case UNSUBSCRIBE:
 				//fmt.Println("Unsubscribe")
@@ -261,12 +254,6 @@ func (c *client) Query(params *QueryParam) error {
 			}
 		}
 	}()
-
-	for _, answer := range c.entryCache {
-		// Replay all entries in the cache
-		answerChan <- answer
-		//fmt.Println("Cache: " + answer.Header().Name)
-	}
 
 	// Send the query
 	m := new(dns.Msg)
