@@ -186,6 +186,7 @@ func (c *client) broadcastAll() {
 				for idx, channel := range subscriberChans {
 					if channel == msg.Channel {
 						subscriberChans = append(subscriberChans[:idx],subscriberChans[idx + 1:]...)
+						close(channel)
 						break
 					}
 				}
@@ -277,7 +278,6 @@ func (c *client) Query(params *QueryParam) error {
 	select {
 	case <- time.After(params.Timeout):
 		c.Unsubscribe(answerChan)
-		close(answerChan)
 		return nil
 	}
 }
