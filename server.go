@@ -131,9 +131,11 @@ func (s *Server) handleQuery(query *dns.Msg, from net.Addr) error {
 
 	// Handle each question
 	if len(query.Question) > 0 {
-		if err := s.handleQuestion(query.Question[0], &resp); err != nil {
-			log.Printf("[ERR] mdns: failed to handle question %v: %v",
-				query.Question[0], err)
+		for i, _ := range query.Question {
+			if err := s.handleQuestion(query.Question[i], &resp); err != nil {
+				log.Printf("[ERR] mdns: failed to handle question %v: %v",
+					query.Question[i], err)
+			}
 		}
 	}
 
