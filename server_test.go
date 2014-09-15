@@ -1,7 +1,6 @@
 package mdns
 
 import (
-	"bytes"
 	"testing"
 	"time"
 )
@@ -31,9 +30,6 @@ func TestServer_Lookup(t *testing.T) {
 		select {
 		case e := <-entries:
 			if e.Name != "hostname._foobar._tcp.local." {
-				t.Fatalf("bad: %v", e)
-			}
-			if !bytes.Equal(e.Addr.To4(), []byte{127, 0, 0, 1}) {
 				t.Fatalf("bad: %v", e)
 			}
 			if e.Port != 80 {

@@ -52,14 +52,8 @@ type Server struct {
 // NewServer is used to create a new mDNS server from a config
 func NewServer(config *Config) (*Server, error) {
 	// Create the listeners
-	ipv4List, err := net.ListenMulticastUDP("udp4", config.Iface, ipv4Addr)
-	if err != nil {
-		log.Printf("[ERR] mdns: Failed to start IPv4 listener: %v", err)
-	}
-	ipv6List, err := net.ListenMulticastUDP("udp6", config.Iface, ipv6Addr)
-	if err != nil {
-		log.Printf("[ERR] mdns: Failed to start IPv6 listener: %v", err)
-	}
+	ipv4List, _ := net.ListenMulticastUDP("udp4", config.Iface, ipv4Addr)
+	ipv6List, _ := net.ListenMulticastUDP("udp6", config.Iface, ipv6Addr)
 
 	// Check if we have any listener
 	if ipv4List == nil && ipv6List == nil {
@@ -72,8 +66,15 @@ func NewServer(config *Config) (*Server, error) {
 		ipv6List:   ipv6List,
 		shutdownCh: make(chan struct{}),
 	}
-	go s.recv(s.ipv4List)
-	go s.recv(s.ipv6List)
+
+	if ipv4List != nil {
+		go s.recv(s.ipv4List)
+	}
+
+	if ipv6List != nil {
+		go s.recv(s.ipv6List)
+	}
+
 	return s, nil
 }
 
@@ -131,9 +132,11 @@ func (s *Server) handleQuery(query *dns.Msg, from net.Addr) error {
 
 	// Handle each question
 	if len(query.Question) > 0 {
-		if err := s.handleQuestion(query.Question[0], &resp); err != nil {
-			log.Printf("[ERR] mdns: failed to handle question %v: %v",
-				query.Question[0], err)
+		for i, _ := range query.Question {
+			if err := s.handleQuestion(query.Question[i], &resp); err != nil {
+				log.Printf("[ERR] mdns: failed to handle question %v: %v",
+					query.Question[i], err)
+			}
 		}
 	}
 

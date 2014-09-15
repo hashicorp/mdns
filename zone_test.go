@@ -11,7 +11,6 @@ func makeService(t *testing.T) *MDNSService {
 	m := &MDNSService{
 		Instance: "hostname.",
 		Service:  "_http._tcp.",
-		Addr:     []byte{127, 0, 0, 1},
 		Port:     80,
 		Info:     "Local web server",
 		Domain:   "local.",
@@ -41,7 +40,7 @@ func TestMDNSService_ServiceAddr(t *testing.T) {
 		Qtype: dns.TypeANY,
 	}
 	recs := s.Records(q)
-	if len(recs) != 4 {
+	if len(recs) != 5 {
 		t.Fatalf("bad: %v", recs)
 	}
 
@@ -55,8 +54,11 @@ func TestMDNSService_ServiceAddr(t *testing.T) {
 	if _, ok := recs[2].(*dns.A); !ok {
 		t.Fatalf("bad: %v", recs[2])
 	}
-	if _, ok := recs[3].(*dns.TXT); !ok {
+	if _, ok := recs[3].(*dns.AAAA); !ok {
 		t.Fatalf("bad: %v", recs[3])
+	}
+	if _, ok := recs[4].(*dns.TXT); !ok {
+		t.Fatalf("bad: %v", recs[4])
 	}
 
 	if ptr.Ptr != s.instanceAddr {
@@ -77,7 +79,7 @@ func TestMDNSService_InstanceAddr_ANY(t *testing.T) {
 		Qtype: dns.TypeANY,
 	}
 	recs := s.Records(q)
-	if len(recs) != 3 {
+	if len(recs) != 4 {
 		t.Fatalf("bad: %v", recs)
 	}
 	if _, ok := recs[0].(*dns.SRV); !ok {
@@ -86,8 +88,11 @@ func TestMDNSService_InstanceAddr_ANY(t *testing.T) {
 	if _, ok := recs[1].(*dns.A); !ok {
 		t.Fatalf("bad: %v", recs[1])
 	}
-	if _, ok := recs[2].(*dns.TXT); !ok {
+	if _, ok := recs[2].(*dns.AAAA); !ok {
 		t.Fatalf("bad: %v", recs[2])
+	}
+	if _, ok := recs[3].(*dns.TXT); !ok {
+		t.Fatalf("bad: %v", recs[3])
 	}
 }
 
@@ -98,7 +103,7 @@ func TestMDNSService_InstanceAddr_SRV(t *testing.T) {
 		Qtype: dns.TypeSRV,
 	}
 	recs := s.Records(q)
-	if len(recs) != 2 {
+	if len(recs) != 3 {
 		t.Fatalf("bad: %v", recs)
 	}
 	srv, ok := recs[0].(*dns.SRV)
@@ -108,10 +113,10 @@ func TestMDNSService_InstanceAddr_SRV(t *testing.T) {
 	if _, ok := recs[1].(*dns.A); !ok {
 		t.Fatalf("bad: %v", recs[1])
 	}
-
-	if srv.Target != s.instanceAddr {
-		t.Fatalf("bad: %v", recs[0])
+	if _, ok := recs[2].(*dns.AAAA); !ok {
+		t.Fatalf("bad: %v", recs[2])
 	}
+
 	if srv.Port != uint16(s.Port) {
 		t.Fatalf("bad: %v", recs[0])
 	}
@@ -131,26 +136,18 @@ func TestMDNSService_InstanceAddr_A(t *testing.T) {
 	if !ok {
 		t.Fatalf("bad: %v", recs[0])
 	}
-	if !bytes.Equal(a.A, s.Addr) {
+	if !bytes.Equal(a.A, s.ipv4Addr) {
 		t.Fatalf("bad: %v", recs[0])
 	}
 }
 
 func TestMDNSService_InstanceAddr_AAAA(t *testing.T) {
 	s := makeService(t)
-	s.Addr = []byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
-		11, 12, 13, 14, 15, 16}
 	q := dns.Question{
 		Name:  "hostname._http._tcp.local.",
-		Qtype: dns.TypeA,
+		Qtype: dns.TypeAAAA,
 	}
 	recs := s.Records(q)
-	if len(recs) != 0 {
-		t.Fatalf("bad: %v", recs)
-	}
-
-	q.Qtype = dns.TypeAAAA
-	recs = s.Records(q)
 	if len(recs) != 1 {
 		t.Fatalf("bad: %v", recs)
 	}
@@ -158,7 +155,7 @@ func TestMDNSService_InstanceAddr_AAAA(t *testing.T) {
 	if !ok {
 		t.Fatalf("bad: %v", recs[0])
 	}
-	if !bytes.Equal(a4.AAAA, s.Addr) {
+	if !bytes.Equal(a4.AAAA, s.ipv6Addr) {
 		t.Fatalf("bad: %v", recs[0])
 	}
 }
