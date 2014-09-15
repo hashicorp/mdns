@@ -307,21 +307,3 @@ func (c *client) recv(l *net.UDPConn, msgCh chan *dns.Msg) {
 		}
 	}
 }
-
-// ensureName is used to ensure the named node is in progress
-func ensureName(inprogress map[string]*ServiceEntry, name string) *ServiceEntry {
-	if inp, ok := inprogress[name]; ok {
-		return inp
-	}
-	inp := &ServiceEntry{
-		Name: name,
-	}
-	inprogress[name] = inp
-	return inp
-}
-
-// alias is used to setup an alias between two entries
-func alias(inprogress map[string]*ServiceEntry, src, dst string) {
-	srcEntry := ensureName(inprogress, src)
-	inprogress[dst] = srcEntry
-}
