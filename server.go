@@ -36,43 +36,74 @@ type Config struct {
 	Iface *net.Interface
 }
 
+type MCastListener struct {
+	Iface *net.Interface
+	Listener *net.UDPConn
+	IsIpv6 bool
+}
+
 // mDNS server is used to listen for mDNS queries and respond if we
 // have a matching local record
 type Server struct {
 	config *Config
 
-	ipv4List *net.UDPConn
-	ipv6List *net.UDPConn
+	listeners []*MCastListener
 
 	shutdown     bool
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
 }
 
+func addMulticastListenersForIface(listeners []*MCastListener, iface *net.Interface) []*MCastListener {
+	if l, err := net.ListenMulticastUDP("udp4", iface, ipv4Addr); err == nil && l != nil {
+		listeners = append(listeners, &MCastListener{
+			Iface: iface,
+			Listener: l,
+			IsIpv6: false,
+		})
+	}
+	if l, err := net.ListenMulticastUDP("udp6", iface, ipv6Addr); err == nil && l != nil {
+		listeners = append(listeners, &MCastListener{
+			Iface: iface,
+			Listener: l,
+			IsIpv6: true,
+		})
+	}
+	return listeners
+}
+
 // NewServer is used to create a new mDNS server from a config
 func NewServer(config *Config) (*Server, error) {
-	// Create the listeners
-	ipv4List, _ := net.ListenMulticastUDP("udp4", config.Iface, ipv4Addr)
-	ipv6List, _ := net.ListenMulticastUDP("udp6", config.Iface, ipv6Addr)
+
+	//fmt.Println("new server, config", config, "zone", config.Zone)
+
+	listeners := make([]*MCastListener, 0)
+
+	if config.Iface != nil {
+		listeners = addMulticastListenersForIface(listeners, config.Iface)
+	} else {
+		if ifaces, err := net.Interfaces(); err != nil {
+			return nil, err
+		} else {
+			for _, iface := range ifaces {
+				listeners = addMulticastListenersForIface(listeners, &iface)
+			}
+		}
+	}
 
 	// Check if we have any listener
-	if ipv4List == nil && ipv6List == nil {
+	if len(listeners) == 0 {
 		return nil, fmt.Errorf("No multicast listeners could be started")
 	}
 
 	s := &Server{
 		config:     config,
-		ipv4List:   ipv4List,
-		ipv6List:   ipv6List,
+		listeners:   listeners,
 		shutdownCh: make(chan struct{}),
 	}
 
-	if ipv4List != nil {
-		go s.recv(s.ipv4List)
-	}
-
-	if ipv6List != nil {
-		go s.recv(s.ipv6List)
+	for _, l := range listeners {
+		go s.recv(l)
 	}
 
 	return s, nil
@@ -89,51 +120,49 @@ func (s *Server) Shutdown() error {
 	s.shutdown = true
 	close(s.shutdownCh)
 
-	if s.ipv4List != nil {
-		s.ipv4List.Close()
-	}
-	if s.ipv6List != nil {
-		s.ipv6List.Close()
+	for _, l := range s.listeners {
+		l.Listener.Close()
 	}
 	return nil
 }
 
 // recv is a long running routine to receive packets from an interface
-func (s *Server) recv(c *net.UDPConn) {
-	if c == nil {
+func (s *Server) recv(l *MCastListener) {
+	if l == nil {
 		return
 	}
 	buf := make([]byte, 65536)
 	for !s.shutdown {
-		n, from, err := c.ReadFrom(buf)
+		n, from, err := l.Listener.ReadFrom(buf)
 		if err != nil {
 			continue
 		}
-		if err := s.parsePacket(buf[:n], from); err != nil {
+		if err := s.parsePacket(buf[:n], l, from); err != nil {
 			log.Printf("[ERR] mdns: Failed to handle query: %v", err)
 		}
 	}
 }
 
 // parsePacket is used to parse an incoming packet
-func (s *Server) parsePacket(packet []byte, from net.Addr) error {
+func (s *Server) parsePacket(packet []byte, l *MCastListener, from net.Addr) error {
 	var msg dns.Msg
 	if err := msg.Unpack(packet); err != nil {
 		log.Printf("[ERR] mdns: Failed to unpack packet: %v", err)
 		return err
 	}
-	return s.handleQuery(&msg, from)
+	return s.handleQuery(&msg, l, from)
 }
 
 // handleQuery is used to handle an incoming query
-func (s *Server) handleQuery(query *dns.Msg, from net.Addr) error {
+func (s *Server) handleQuery(query *dns.Msg, l *MCastListener, from net.Addr) error {
 	var resp dns.Msg
 	resp.SetReply(query)
+	resp.MsgHdr.Authoritative = true	// testing
 
 	// Handle each question
 	if len(query.Question) > 0 {
 		for i, _ := range query.Question {
-			if err := s.handleQuestion(query.Question[i], &resp); err != nil {
+			if err := s.handleQuestion(query.Question[i], from, &resp); err != nil {
 				log.Printf("[ERR] mdns: failed to handle question %v: %v",
 					query.Question[i], err)
 			}
@@ -142,36 +171,31 @@ func (s *Server) handleQuery(query *dns.Msg, from net.Addr) error {
 
 	// Check if there is an answer
 	if len(resp.Answer) > 0 {
-		return s.sendResponse(&resp, from)
+		return s.sendResponse(&resp, l, from)
 	}
 	return nil
 }
 
 // handleQuestion is used to handle an incoming question
-func (s *Server) handleQuestion(q dns.Question, resp *dns.Msg) error {
+func (s *Server) handleQuestion(q dns.Question, from net.Addr, resp *dns.Msg) error {
 	// Bail if we have no zone
 	if s.config.Zone == nil {
 		return nil
 	}
 
 	// Add all the query answers
-	records := s.config.Zone.Records(q)
+	records := s.config.Zone.Records(q, from)
 	resp.Answer = append(resp.Answer, records...)
 	return nil
 }
 
 // sendResponse is used to send a response packet
-func (s *Server) sendResponse(resp *dns.Msg, from net.Addr) error {
+func (s *Server) sendResponse(resp *dns.Msg, l *MCastListener, from net.Addr) error {
 	buf, err := resp.Pack()
 	if err != nil {
 		return err
 	}
 	addr := from.(*net.UDPAddr)
-	if addr.IP.To4() != nil {
-		_, err = s.ipv4List.WriteToUDP(buf, addr)
-		return err
-	} else {
-		_, err = s.ipv6List.WriteToUDP(buf, addr)
-		return err
-	}
+	_, err = l.Listener.WriteToUDP(buf, addr)
+	return err
 }
