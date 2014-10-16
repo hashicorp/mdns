@@ -103,6 +103,11 @@ func (m *MDNSService) Records(q dns.Question) []dns.RR {
 		return m.serviceRecords(q)
 	case m.instanceAddr:
 		return m.instanceRecords(q)
+	case m.HostName:
+		if q.Qtype == dns.TypeA || q.Qtype == dns.TypeAAAA {
+			return m.instanceRecords(q)
+		}
+		fallthrough
 	default:
 		return nil
 	}
