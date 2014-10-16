@@ -50,7 +50,7 @@ func TestNewMDNSService_BadParams(t *testing.T) {
 		_, err := NewMDNSService(
 			"instance name",
 			"_http._tcp",
-			test.Domain,
+			test.domain,
 			test.hostName,
 			80, // port
 			[]net.IP{net.IP([]byte{192, 168, 0, 42})},
