@@ -9,8 +9,8 @@ import (
 )
 
 const (
-	// defaultTtl controls how long we set the TTL for records
-	defaultTTL = 10
+	// defaultTTL is the default TTL value in returned DNS records in seconds.
+	defaultTTL = 120
 )
 
 // Zone is the interface used to integrate with the server and
