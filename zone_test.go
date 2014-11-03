@@ -219,3 +219,40 @@ func TestMDNSService_InstanceAddr_TXT(t *testing.T) {
 		t.Fatalf("TXT record mismatch for %v: got %v, want %v", recs[0], got, want)
 	}
 }
+
+func TestMDNSService_HostNameQuery(t *testing.T) {
+	s := makeService(t)
+	for _, test := range []struct {
+		q    dns.Question
+		want []dns.RR
+	}{
+		{
+			dns.Question{Name: "testhost.", Qtype: dns.TypeA},
+			[]dns.RR{&dns.A{
+				Hdr: dns.RR_Header{
+					Name:   "testhost.",
+					Rrtype: dns.TypeA,
+					Class:  dns.ClassINET,
+					Ttl:    10,
+				},
+				A: net.IP([]byte{192, 168, 0, 42}),
+			}},
+		},
+		{
+			dns.Question{Name: "testhost.", Qtype: dns.TypeAAAA},
+			[]dns.RR{&dns.AAAA{
+				Hdr: dns.RR_Header{
+					Name:   "testhost.",
+					Rrtype: dns.TypeAAAA,
+					Class:  dns.ClassINET,
+					Ttl:    10,
+				},
+				AAAA: net.ParseIP("2620:0:1000:1900:b0c2:d0b2:c411:18bc"),
+			}},
+		},
+	} {
+		if got := s.Records(test.q); !reflect.DeepEqual(got, test.want) {
+			t.Errorf("hostname query failed: s.Records(%v) = %v, want %v", test.q, got, test.want)
+		}
+	}
+}
