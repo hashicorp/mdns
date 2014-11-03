@@ -15,10 +15,7 @@ func TestServer_StartStop(t *testing.T) {
 }
 
 func TestServer_Lookup(t *testing.T) {
-	s := makeService(t)
-	s.Service = "_foobar._tcp"
-	s.Init()
-	serv, err := NewServer(&Config{Zone: s})
+	serv, err := NewServer(&Config{Zone: makeServiceWithServiceName(t, "_foobar._tcp")})
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
