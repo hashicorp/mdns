@@ -267,18 +267,29 @@ func (s *Server) handleQuestion(q dns.Question) (multicastRecs, unicastRecs []dn
 
 // sendResponse is used to send a response packet
 func (s *Server) sendResponse(resp *dns.Msg, from net.Addr, unicast bool) error {
-	// TODO(reddaly): Respect the unicast argument, and allow sending responses
-	// over multicast.
 	buf, err := resp.Pack()
 	if err != nil {
 		return err
 	}
 	addr := from.(*net.UDPAddr)
-	if addr.IP.To4() != nil {
-		_, err = s.ipv4List.WriteToUDP(buf, addr)
-		return err
-	} else {
-		_, err = s.ipv6List.WriteToUDP(buf, addr)
-		return err
+	ipv4 := addr.IP.To4() != nil
+	conn := s.ipv4List
+
+	switch ipv4 {
+	case true: // ipv4
+		if unicast == false {
+			addr = ipv4Addr
+		}
+	case false: // ipv6
+		if unicast == false {
+			addr = ipv6Addr
+		}
+
+		conn = s.ipv6List
+	default:
+		break
 	}
+
+	_, err = conn.WriteToUDP(buf, addr)
+	return err
 }
