@@ -256,3 +256,20 @@ func TestMDNSService_HostNameQuery(t *testing.T) {
 		}
 	}
 }
+
+func TestMDNSService_serviceEnum_PTR(t *testing.T) {
+	s := makeService(t)
+	q := dns.Question{
+		Name:  "_services._dns-sd._udp.local.",
+		Qtype: dns.TypePTR,
+	}
+	recs := s.Records(q)
+	if len(recs) != 1 {
+		t.Fatalf("bad: %v", recs)
+	}
+	if ptr, ok := recs[0].(*dns.PTR); !ok {
+		t.Errorf("recs[0] should be PTR record, got: %v, all records: %v", recs[0], recs)
+	} else if got, want := ptr.Ptr, "_http._tcp.local."; got != want {
+		t.Fatalf("bad PTR record %v: got %v, want %v", ptr, got, want)
+	}
+}
