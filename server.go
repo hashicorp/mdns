@@ -271,25 +271,30 @@ func (s *Server) sendResponse(resp *dns.Msg, from net.Addr, unicast bool) error 
 	if err != nil {
 		return err
 	}
+
+	// Determine the socket to send from
 	addr := from.(*net.UDPAddr)
-	ipv4 := addr.IP.To4() != nil
-	conn := s.ipv4List
-
-	switch ipv4 {
-	case true: // ipv4
-		if unicast == false {
-			addr = ipv4Addr
-		}
-	case false: // ipv6
-		if unicast == false {
-			addr = ipv6Addr
-		}
-
+	var conn *net.UDPConn
+	if addr.IP.To4() != nil {
+		conn = s.ipv4List
+	} else {
 		conn = s.ipv6List
-	default:
-		break
 	}
 
+	// Determine the address to send to if not unicast
+	if !unicast {
+		if addr.IP.To4() != nil {
+			addr = ipv4Addr
+		} else {
+			addr = ipv6Addr
+		}
+	}
+
+	// Guard against a missing connection or address
+	if conn == nil || addr == nil {
+		return fmt.Errorf("Unable to respond, missing connection (%v) or address (%v)",
+			conn, addr)
+	}
 	_, err = conn.WriteToUDP(buf, addr)
 	return err
 }
