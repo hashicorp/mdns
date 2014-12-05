@@ -219,3 +219,57 @@ func TestMDNSService_InstanceAddr_TXT(t *testing.T) {
 		t.Fatalf("TXT record mismatch for %v: got %v, want %v", recs[0], got, want)
 	}
 }
+
+func TestMDNSService_HostNameQuery(t *testing.T) {
+	s := makeService(t)
+	for _, test := range []struct {
+		q    dns.Question
+		want []dns.RR
+	}{
+		{
+			dns.Question{Name: "testhost.", Qtype: dns.TypeA},
+			[]dns.RR{&dns.A{
+				Hdr: dns.RR_Header{
+					Name:   "testhost.",
+					Rrtype: dns.TypeA,
+					Class:  dns.ClassINET,
+					Ttl:    120,
+				},
+				A: net.IP([]byte{192, 168, 0, 42}),
+			}},
+		},
+		{
+			dns.Question{Name: "testhost.", Qtype: dns.TypeAAAA},
+			[]dns.RR{&dns.AAAA{
+				Hdr: dns.RR_Header{
+					Name:   "testhost.",
+					Rrtype: dns.TypeAAAA,
+					Class:  dns.ClassINET,
+					Ttl:    120,
+				},
+				AAAA: net.ParseIP("2620:0:1000:1900:b0c2:d0b2:c411:18bc"),
+			}},
+		},
+	} {
+		if got := s.Records(test.q); !reflect.DeepEqual(got, test.want) {
+			t.Errorf("hostname query failed: s.Records(%v) = %v, want %v", test.q, got, test.want)
+		}
+	}
+}
+
+func TestMDNSService_serviceEnum_PTR(t *testing.T) {
+	s := makeService(t)
+	q := dns.Question{
+		Name:  "_services._dns-sd._udp.local.",
+		Qtype: dns.TypePTR,
+	}
+	recs := s.Records(q)
+	if len(recs) != 1 {
+		t.Fatalf("bad: %v", recs)
+	}
+	if ptr, ok := recs[0].(*dns.PTR); !ok {
+		t.Errorf("recs[0] should be PTR record, got: %v, all records: %v", recs[0], recs)
+	} else if got, want := ptr.Ptr, "_http._tcp.local."; got != want {
+		t.Fatalf("bad PTR record %v: got %v, want %v", ptr, got, want)
+	}
+}

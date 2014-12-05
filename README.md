@@ -13,13 +13,8 @@ Using the library is very simple, here is an example of publishing a service ent
 
     // Setup our service export
     host, _ := os.Hostname()
-    service := &mdns.MDNSService{
-	    Instance: host,
-	    Service: "_foobar._tcp",
-	    Port:    8000,
-	    Info:    "My awesome service",
-    }
-    service.Init()
+    info := []string{"My awesome service"},
+    service, _ := NewMDNSService(host, "_foobar._tcp", "", "", 8000, nil, info)
 
     // Create the mDNS server, defer shutdown
     server, _ := mdns.NewServer(&mdns.Config{Zone: service})

@@ -10,8 +10,8 @@ import (
 )
 
 const (
-	// defaultTtl controls how long we set the TTL for records
-	defaultTTL = 10
+	// defaultTTL is the default TTL value in returned DNS records in seconds.
+	defaultTTL = 120
 )
 
 // Zone is the interface used to integrate with the server and
@@ -33,6 +33,7 @@ type MDNSService struct {
 
 	serviceAddr  string // Fully qualified service address
 	instanceAddr string // Fully qualified instance address
+	enumAddr     string // _services._dns-sd._udp.<domain>
 }
 
 // validateFQDN returns an error if the passed string is not a fully qualified
@@ -123,6 +124,7 @@ func NewMDNSService(instance, service, domain, hostName string, port int, ips []
 		TXT:          txt,
 		serviceAddr:  fmt.Sprintf("%s.%s.", trimDot(service), trimDot(domain)),
 		instanceAddr: fmt.Sprintf("%s.%s.%s.", instance, trimDot(service), trimDot(domain)),
+		enumAddr:     fmt.Sprintf("_services._dns-sd._udp.%s.", trimDot(domain)),
 	}, nil
 }
 
@@ -134,10 +136,37 @@ func trimDot(s string) string {
 // Records returns DNS records in response to a DNS question.
 func (m *MDNSService) Records(q dns.Question) []dns.RR {
 	switch q.Name {
+	case m.enumAddr:
+		return m.serviceEnum(q)
 	case m.serviceAddr:
 		return m.serviceRecords(q)
 	case m.instanceAddr:
 		return m.instanceRecords(q)
+	case m.HostName:
+		if q.Qtype == dns.TypeA || q.Qtype == dns.TypeAAAA {
+			return m.instanceRecords(q)
+		}
+		fallthrough
+	default:
+		return nil
+	}
+}
+
+func (m *MDNSService) serviceEnum(q dns.Question) []dns.RR {
+	switch q.Qtype {
+	case dns.TypeANY:
+		fallthrough
+	case dns.TypePTR:
+		rr := &dns.PTR{
+			Hdr: dns.RR_Header{
+				Name:   q.Name,
+				Rrtype: dns.TypePTR,
+				Class:  dns.ClassINET,
+				Ttl:    defaultTTL,
+			},
+			Ptr: m.serviceAddr,
+		}
+		return []dns.RR{rr}
 	default:
 		return nil
 	}
