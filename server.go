@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"net"
-	"strings"
 	"sync"
 
 	"github.com/miekg/dns"
@@ -214,14 +213,6 @@ func (s *Server) handleQuery(query *dns.Msg, from net.Addr) error {
 
 			Answer: answer,
 		}
-	}
-
-	if len(multicastAnswer) == 0 && len(unicastAnswer) == 0 {
-		questions := make([]string, len(query.Question))
-		for i, q := range query.Question {
-			questions[i] = q.Name
-		}
-		log.Printf("no responses for query with questions: %s", strings.Join(questions, ", "))
 	}
 
 	if mresp := resp(false); mresp != nil {
