@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/hashicorp/go.net/ipv4"
+	"github.com/hashicorp/go.net/ipv6"
 	"github.com/miekg/dns"
 )
 
@@ -37,6 +39,12 @@ type Config struct {
 	// interface. If not provided, the system default multicase interface
 	// is used.
 	Iface *net.Interface
+
+	// Whether to set the IP_MULTICAST_LOOP socket option on the multicast sockets
+	// opened.  Setting this to false allows mDNS clients on the same machine to
+	// discover the service. See
+	// http://stackoverflow.com/questions/1719156/is-there-a-way-to-test-multicast-ip-on-same-box
+	DisableMulticastLoopback bool
 }
 
 // mDNS server is used to listen for mDNS queries and respond if we
@@ -55,8 +63,22 @@ type Server struct {
 // NewServer is used to create a new mDNS server from a config
 func NewServer(config *Config) (*Server, error) {
 	// Create the listeners
+	// TODO(reddaly): Handle errors returned by ListenMulticastUDP
 	ipv4List, _ := net.ListenMulticastUDP("udp4", config.Iface, ipv4Addr)
 	ipv6List, _ := net.ListenMulticastUDP("udp6", config.Iface, ipv6Addr)
+
+	{
+		p := ipv4.NewPacketConn(ipv4List)
+		if err := p.SetMulticastLoopback(!config.DisableMulticastLoopback); err != nil {
+			return nil, err
+		}
+	}
+	{
+		p := ipv6.NewPacketConn(ipv6List)
+		if err := p.SetMulticastLoopback(!config.DisableMulticastLoopback); err != nil {
+			return nil, err
+		}
+	}
 
 	// Check if we have any listener
 	if ipv4List == nil && ipv6List == nil {
