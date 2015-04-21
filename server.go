@@ -63,20 +63,27 @@ type Server struct {
 // NewServer is used to create a new mDNS server from a config
 func NewServer(config *Config) (*Server, error) {
 	// Create the listeners
-	// TODO(reddaly): Handle errors returned by ListenMulticastUDP
-	ipv4List, _ := net.ListenMulticastUDP("udp4", config.Iface, ipv4Addr)
-	ipv6List, _ := net.ListenMulticastUDP("udp6", config.Iface, ipv6Addr)
+	ipv4List, err := net.ListenMulticastUDP("udp4", config.Iface, ipv4Addr)
+	if err != nil {
+		// TODO(reddaly): Handle this error beyond printing a log message.
+		log.Printf("[ERR] mdns: Failed to listen to IPv4 mdns multicast address: %v", err)
+	}
+	ipv6List, err := net.ListenMulticastUDP("udp6", config.Iface, ipv6Addr)
+	if err != nil {
+		// TODO(reddaly): Handle this error beyond printing a log message.
+		log.Printf("[ERR] mdns: Failed to listen to IPv6 mdns multicast address: %v", err)
+	}
 
-	{
+	if ipv4List != nil {
 		p := ipv4.NewPacketConn(ipv4List)
 		if err := p.SetMulticastLoopback(!config.DisableMulticastLoopback); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("could not set multicast loopback attribute of ipv4 connection: %v", err)
 		}
 	}
-	{
+	if ipv6List != nil {
 		p := ipv6.NewPacketConn(ipv6List)
 		if err := p.SetMulticastLoopback(!config.DisableMulticastLoopback); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("could not set multicast loopback attribute of ipv6 connection: %v", err)
 		}
 	}
 
