@@ -10,6 +10,11 @@ import (
 
 func main() {
 
+	serviceTag := "_foobar._tcp"
+	if len(os.Args) > 1 {
+		serviceTag = os.Args[1]
+	}
+
 	// Setup our service export
 	host, err := os.Hostname()
 	if err != nil {
@@ -17,7 +22,7 @@ func main() {
 	}
 
 	info := []string{"My awesome service"}
-	service, err := mdns.NewMDNSService(host, "_foobar._tcp", "", "", 8000, nil, info)
+	service, err := mdns.NewMDNSService(host, serviceTag, "", "", 8000, nil, info)
 	if err != nil {
 		log.Fatal(err)
 	}

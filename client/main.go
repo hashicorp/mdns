@@ -10,6 +10,11 @@ import (
 
 func main() {
 
+	serviceTag := "_foobar._tcp"
+	if len(os.Args) > 1 {
+		serviceTag = os.Args[1]
+	}
+
 	// Make a channel for results and start listening
 	entriesCh := make(chan *mdns.ServiceEntry, 8)
 	defer close(entriesCh)
@@ -20,8 +25,8 @@ func main() {
 		}
 	}()
 
-	// Start the lookup
-	err := mdns.Lookup("_foobar._tcp", entriesCh)
+	// Start the lookups
+	err := mdns.Lookup(serviceTag, entriesCh)
 	if err != nil {
 		fmt.Println(err)
 	}
