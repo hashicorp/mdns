@@ -102,7 +102,6 @@ type client struct {
 	ipv6MulticastConn *net.UDPConn
 
 	closed    bool
-	closedCh  chan struct{} // TODO(reddaly): This doesn't appear to be used.
 	closeLock sync.Mutex
 }
 
@@ -142,7 +141,6 @@ func newClient() (*client, error) {
 		ipv6MulticastConn: mconn6,
 		ipv4UnicastConn:   uconn4,
 		ipv6UnicastConn:   uconn6,
-		closedCh:          make(chan struct{}),
 	}
 	return c, nil
 }
@@ -158,7 +156,6 @@ func (c *client) Close() error {
 	c.closed = true
 
 	log.Printf("[INFO] mdns: Closing client %v", *c)
-	close(c.closedCh)
 
 	if c.ipv4UnicastConn != nil {
 		c.ipv4UnicastConn.Close()
@@ -343,7 +340,6 @@ func (c *client) recv(l *net.UDPConn, msgCh chan *dns.Msg) {
 		}
 		select {
 		case msgCh <- msg:
-		case <-c.closedCh:
 			return
 		}
 	}

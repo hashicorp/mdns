@@ -48,7 +48,6 @@ type Server struct {
 	ipv6List *net.UDPConn
 
 	shutdown     bool
-	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
 }
 
@@ -64,10 +63,9 @@ func NewServer(config *Config) (*Server, error) {
 	}
 
 	s := &Server{
-		config:     config,
-		ipv4List:   ipv4List,
-		ipv6List:   ipv6List,
-		shutdownCh: make(chan struct{}),
+		config:   config,
+		ipv4List: ipv4List,
+		ipv6List: ipv6List,
 	}
 
 	if ipv4List != nil {
@@ -90,7 +88,6 @@ func (s *Server) Shutdown() error {
 		return nil
 	}
 	s.shutdown = true
-	close(s.shutdownCh)
 
 	if s.ipv4List != nil {
 		s.ipv4List.Close()
