@@ -324,7 +324,13 @@ func (c *client) recv(l *net.UDPConn, msgCh chan *dns.Msg) {
 		return
 	}
 	buf := make([]byte, 65536)
-	for !c.closed {
+	for {
+		c.closeLock.Lock()
+		if c.closed {
+			c.closeLock.Unlock()
+			return
+		}
+		c.closeLock.Unlock()
 		n, err := l.Read(buf)
 		if err != nil {
 			log.Printf("[ERR] mdns: Failed to read packet: %v", err)
