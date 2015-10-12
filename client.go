@@ -103,7 +103,7 @@ type client struct {
 
 	closed    bool
 	closedCh  chan struct{} // TODO(reddaly): This doesn't appear to be used.
-	closeLock sync.Mutex
+	closeLock sync.RWMutex
 }
 
 // NewClient creates a new mdns Client that can be used to query
@@ -324,6 +324,8 @@ func (c *client) recv(l *net.UDPConn, msgCh chan *dns.Msg) {
 		return
 	}
 	buf := make([]byte, 65536)
+	c.closeLock.RLock()
+	defer c.closeLock.RUnlock()
 	for !c.closed {
 		n, err := l.Read(buf)
 		if err != nil {
