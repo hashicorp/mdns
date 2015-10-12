@@ -49,7 +49,7 @@ type Server struct {
 
 	shutdown     bool
 	shutdownCh   chan struct{}
-	shutdownLock sync.Mutex
+	shutdownLock sync.RWMutex
 }
 
 // NewServer is used to create a new mDNS server from a config
@@ -107,6 +107,8 @@ func (s *Server) recv(c *net.UDPConn) {
 		return
 	}
 	buf := make([]byte, 65536)
+	s.shutdownLock.RLock()
+	defer s.shutdownLock.RUnlock()
 	for !s.shutdown {
 		n, from, err := c.ReadFrom(buf)
 		if err != nil {
