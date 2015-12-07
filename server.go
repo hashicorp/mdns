@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/hashicorp/go.net/ipv4"
+	"github.com/hashicorp/go.net/ipv6"
 	"github.com/miekg/dns"
 )
 
@@ -37,6 +39,12 @@ type Config struct {
 	// interface. If not provided, the system default multicase interface
 	// is used.
 	Iface *net.Interface
+
+	// Whether to set the IP_MULTICAST_LOOP socket option on the multicast sockets
+	// opened.  Setting this to false allows mDNS clients on the same machine to
+	// discover the service. See
+	// http://stackoverflow.com/questions/1719156/is-there-a-way-to-test-multicast-ip-on-same-box
+	DisableMulticastLoopback bool
 }
 
 // mDNS server is used to listen for mDNS queries and respond if we
@@ -55,8 +63,29 @@ type Server struct {
 // NewServer is used to create a new mDNS server from a config
 func NewServer(config *Config) (*Server, error) {
 	// Create the listeners
-	ipv4List, _ := net.ListenMulticastUDP("udp4", config.Iface, ipv4Addr)
-	ipv6List, _ := net.ListenMulticastUDP("udp6", config.Iface, ipv6Addr)
+	ipv4List, err := net.ListenMulticastUDP("udp4", config.Iface, ipv4Addr)
+	if err != nil {
+		// TODO(reddaly): Handle this error beyond printing a log message.
+		log.Printf("[ERR] mdns: Failed to listen to IPv4 mdns multicast address: %v", err)
+	}
+	ipv6List, err := net.ListenMulticastUDP("udp6", config.Iface, ipv6Addr)
+	if err != nil {
+		// TODO(reddaly): Handle this error beyond printing a log message.
+		log.Printf("[ERR] mdns: Failed to listen to IPv6 mdns multicast address: %v", err)
+	}
+
+	if ipv4List != nil {
+		p := ipv4.NewPacketConn(ipv4List)
+		if err := p.SetMulticastLoopback(!config.DisableMulticastLoopback); err != nil {
+			return nil, fmt.Errorf("could not set multicast loopback attribute of ipv4 connection: %v", err)
+		}
+	}
+	if ipv6List != nil {
+		p := ipv6.NewPacketConn(ipv6List)
+		if err := p.SetMulticastLoopback(!config.DisableMulticastLoopback); err != nil {
+			return nil, fmt.Errorf("could not set multicast loopback attribute of ipv6 connection: %v", err)
+		}
+	}
 
 	// Check if we have any listener
 	if ipv4List == nil && ipv6List == nil {
