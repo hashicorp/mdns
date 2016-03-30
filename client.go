@@ -303,7 +303,6 @@ func (c *client) query(params *QueryParam) error {
 				inp.sent = true
 				select {
 				case params.Entries <- inp:
-				default:
 				}
 			} else {
 				// Fire off a node specific query
