@@ -11,27 +11,54 @@ environments.
 
 Using the library is very simple, here is an example of publishing a service entry:
 
-    // Setup our service export
-    host, _ := os.Hostname()
-    info := []string{"My awesome service"},
-    service, _ := NewMDNSService(host, "_foobar._tcp", "", "", 8000, nil, info)
+```
+package main
 
-    // Create the mDNS server, defer shutdown
-    server, _ := mdns.NewServer(&mdns.Config{Zone: service})
-    defer server.Shutdown()
+import (
+	"github.com/micro/mdns"
+	"os"
+)
 
+func main() {
+
+	// Setup our service export
+	host, _ := os.Hostname()
+	info := []string{"My awesome service"}
+	service, _ := mdns.NewMDNSService(host, "_foobar._tcp", "", "", 8000, nil, info)
+
+	// Create the mDNS server, defer shutdown
+	server, _ := mdns.NewServer(&mdns.Config{Zone: service})
+
+	defer server.Shutdown()
+}
+```
 
 Doing a lookup for service providers is also very simple:
 
-    // Make a channel for results and start listening
-    entriesCh := make(chan *mdns.ServiceEntry, 4)
-    go func() {
-        for entry := range entriesCh {
-            fmt.Printf("Got new entry: %v\n", entry)
-        }
-    }()
+```
+package main
 
-    // Start the lookup
-    mdns.Lookup("_foobar._tcp", entriesCh)
-    close(entriesCh)
+import (
+	"fmt"
+	"github.com/cryptix/mdns"
+)
 
+func main() {
+
+	// Make a channel for results and start listening
+	entriesCh := make(chan *mdns.ServiceEntry, 8)
+	go func() {
+		for entry := range entriesCh {
+			fmt.Printf("Got new entry: %v\n", entry)
+		}
+	}()
+
+	// Start the lookup
+	err := mdns.Lookup("_foobar._tcp", entriesCh)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	close(entriesCh)
+}
+```
