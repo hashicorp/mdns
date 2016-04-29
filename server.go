@@ -107,7 +107,13 @@ func (s *Server) recv(c *net.UDPConn) {
 		return
 	}
 	buf := make([]byte, 65536)
-	for !s.shutdown {
+	for {
+		s.shutdownLock.Lock()
+		if s.shutdown {
+			s.shutdownLock.Unlock()
+			return
+		}
+		s.shutdownLock.Unlock()
 		n, from, err := c.ReadFrom(buf)
 		if err != nil {
 			continue

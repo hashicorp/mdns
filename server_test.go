@@ -23,6 +23,7 @@ func TestServer_Lookup(t *testing.T) {
 
 	entries := make(chan *ServiceEntry, 1)
 	found := false
+	doneCh := make(chan struct{})
 	go func() {
 		select {
 		case e := <-entries:
@@ -40,6 +41,7 @@ func TestServer_Lookup(t *testing.T) {
 		case <-time.After(80 * time.Millisecond):
 			t.Fatalf("timeout")
 		}
+		close(doneCh)
 	}()
 
 	params := &QueryParam{
@@ -52,6 +54,7 @@ func TestServer_Lookup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
+	<-doneCh
 	if !found {
 		t.Fatalf("record not found")
 	}
