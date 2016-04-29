@@ -40,7 +40,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/cryptix/mdns"
+	"github.com/micro/mdns"
 )
 
 func main() {
