@@ -1,5 +1,4 @@
-mdns
-====
+# MDNS [![GoDoc](https://godoc.org/github.com/micro/mdns?status.svg)](https://godoc.org/github.com/micro/mdns)
 
 Simple mDNS client/server library in Golang. mDNS or Multicast DNS can be
 used to discover services on the local network without the use of an authoritative
