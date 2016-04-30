@@ -150,7 +150,6 @@ func newClient() (*client, error) {
 
 // Close is used to cleanup the client
 func (c *client) Close() error {
-	log.Printf("[INFO] mdns: Closing client %v", *c)
 	c.closeLock.Lock()
 	defer c.closeLock.Unlock()
 
