@@ -23,14 +23,14 @@ type Zone interface {
 
 // MDNSService is used to export a named service by implementing a Zone
 type MDNSService struct {
-	Instance string   // Instance name (e.g. "hostService name")
-	Service  string   // Service name (e.g. "_http._tcp.")
-	Domain   string   // If blank, assumes "local"
-	HostName string   // Host machine DNS name (e.g. "mymachine.net.")
-	Port     int      // Service Port
-	IPs      []net.IP // IP addresses for the service's host
-	TXT      []string // Service TXT records
-
+	Instance     string   // Instance name (e.g. "hostService name")
+	Service      string   // Service name (e.g. "_http._tcp.")
+	Domain       string   // If blank, assumes "local"
+	HostName     string   // Host machine DNS name (e.g. "mymachine.net.")
+	Port         int      // Service Port
+	IPs          []net.IP // IP addresses for the service's host
+	TXT          []string // Service TXT records
+	TTL          uint32
 	serviceAddr  string // Fully qualified service address
 	instanceAddr string // Fully qualified instance address
 	enumAddr     string // _services._dns-sd._udp.<domain>
@@ -122,6 +122,7 @@ func NewMDNSService(instance, service, domain, hostName string, port int, ips []
 		Port:         port,
 		IPs:          ips,
 		TXT:          txt,
+		TTL:          defaultTTL,
 		serviceAddr:  fmt.Sprintf("%s.%s.", trimDot(service), trimDot(domain)),
 		instanceAddr: fmt.Sprintf("%s.%s.%s.", instance, trimDot(service), trimDot(domain)),
 		enumAddr:     fmt.Sprintf("_services._dns-sd._udp.%s.", trimDot(domain)),
@@ -162,7 +163,7 @@ func (m *MDNSService) serviceEnum(q dns.Question) []dns.RR {
 				Name:   q.Name,
 				Rrtype: dns.TypePTR,
 				Class:  dns.ClassINET,
-				Ttl:    defaultTTL,
+				Ttl:    m.TTL,
 			},
 			Ptr: m.serviceAddr,
 		}
@@ -184,7 +185,7 @@ func (m *MDNSService) serviceRecords(q dns.Question) []dns.RR {
 				Name:   q.Name,
 				Rrtype: dns.TypePTR,
 				Class:  dns.ClassINET,
-				Ttl:    defaultTTL,
+				Ttl:    m.TTL,
 			},
 			Ptr: m.instanceAddr,
 		}
@@ -229,7 +230,7 @@ func (m *MDNSService) instanceRecords(q dns.Question) []dns.RR {
 						Name:   m.HostName,
 						Rrtype: dns.TypeA,
 						Class:  dns.ClassINET,
-						Ttl:    defaultTTL,
+						Ttl:    m.TTL,
 					},
 					A: ip4,
 				})
@@ -254,7 +255,7 @@ func (m *MDNSService) instanceRecords(q dns.Question) []dns.RR {
 						Name:   m.HostName,
 						Rrtype: dns.TypeAAAA,
 						Class:  dns.ClassINET,
-						Ttl:    defaultTTL,
+						Ttl:    m.TTL,
 					},
 					AAAA: ip16,
 				})
@@ -269,7 +270,7 @@ func (m *MDNSService) instanceRecords(q dns.Question) []dns.RR {
 				Name:   q.Name,
 				Rrtype: dns.TypeSRV,
 				Class:  dns.ClassINET,
-				Ttl:    defaultTTL,
+				Ttl:    m.TTL,
 			},
 			Priority: 10,
 			Weight:   1,
@@ -297,7 +298,7 @@ func (m *MDNSService) instanceRecords(q dns.Question) []dns.RR {
 				Name:   q.Name,
 				Rrtype: dns.TypeTXT,
 				Class:  dns.ClassINET,
-				Ttl:    defaultTTL,
+				Ttl:    m.TTL,
 			},
 			Txt: m.TXT,
 		}

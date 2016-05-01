@@ -3,27 +3,38 @@ package mdns
 import (
 	"fmt"
 	"log"
+	"math/rand"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/miekg/dns"
-)
-
-const (
-	ipv4mdns              = "224.0.0.251"
-	ipv6mdns              = "ff02::fb"
-	mdnsPort              = 5353
-	forceUnicastResponses = false
+	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
 
 var (
+	mdnsGroupIPv4 = net.IPv4(224, 0, 0, 251)
+	mdnsGroupIPv6 = net.ParseIP("ff02::fb")
+
+	// mDNS wildcard addresses
+	mdnsWildcardAddrIPv4 = &net.UDPAddr{
+		IP:   net.ParseIP("224.0.0.0"),
+		Port: 5353,
+	}
+	mdnsWildcardAddrIPv6 = &net.UDPAddr{
+		IP:   net.ParseIP("[ff02::]"),
+		Port: 5353,
+	}
+
+	// mDNS endpoint addresses
 	ipv4Addr = &net.UDPAddr{
-		IP:   net.ParseIP(ipv4mdns),
-		Port: mdnsPort,
+		IP:   mdnsGroupIPv4,
+		Port: 5353,
 	}
 	ipv6Addr = &net.UDPAddr{
-		IP:   net.ParseIP(ipv6mdns),
-		Port: mdnsPort,
+		IP:   mdnsGroupIPv6,
+		Port: 5353,
 	}
 )
 
@@ -54,12 +65,43 @@ type Server struct {
 // NewServer is used to create a new mDNS server from a config
 func NewServer(config *Config) (*Server, error) {
 	// Create the listeners
-	ipv4List, _ := net.ListenMulticastUDP("udp4", config.Iface, ipv4Addr)
-	ipv6List, _ := net.ListenMulticastUDP("udp6", config.Iface, ipv6Addr)
-
-	// Check if we have any listener
+	// Create wildcard connections (because :5353 can be already taken by other apps)
+	ipv4List, _ := net.ListenUDP("udp4", mdnsWildcardAddrIPv4)
+	ipv6List, _ := net.ListenUDP("udp6", mdnsWildcardAddrIPv6)
 	if ipv4List == nil && ipv6List == nil {
-		return nil, fmt.Errorf("No multicast listeners could be started")
+		return nil, fmt.Errorf("[ERR] mdns: Failed to bind to any udp port!")
+	}
+
+	// Join multicast groups to receive announcements
+	p1 := ipv4.NewPacketConn(ipv4List)
+	p2 := ipv6.NewPacketConn(ipv6List)
+	p1.SetMulticastLoopback(true)
+	p2.SetMulticastLoopback(true)
+
+	if config.Iface != nil {
+		if err := p1.JoinGroup(config.Iface, &net.UDPAddr{IP: mdnsGroupIPv4}); err != nil {
+			return nil, err
+		}
+		if err := p2.JoinGroup(config.Iface, &net.UDPAddr{IP: mdnsGroupIPv6}); err != nil {
+			return nil, err
+		}
+	} else {
+		ifaces, err := net.Interfaces()
+		if err != nil {
+			return nil, err
+		}
+		errCount1, errCount2 := 0, 0
+		for _, iface := range ifaces {
+			if err := p1.JoinGroup(&iface, &net.UDPAddr{IP: mdnsGroupIPv4}); err != nil {
+				errCount1++
+			}
+			if err := p2.JoinGroup(&iface, &net.UDPAddr{IP: mdnsGroupIPv6}); err != nil {
+				errCount2++
+			}
+		}
+		if len(ifaces) == errCount1 && len(ifaces) == errCount2 {
+			return nil, fmt.Errorf("Failed to join multicast group on all interfaces!")
+		}
 	}
 
 	s := &Server{
@@ -77,6 +119,8 @@ func NewServer(config *Config) (*Server, error) {
 		go s.recv(s.ipv6List)
 	}
 
+	go s.probe()
+
 	return s, nil
 }
 
@@ -88,8 +132,10 @@ func (s *Server) Shutdown() error {
 	if s.shutdown {
 		return nil
 	}
+
 	s.shutdown = true
 	close(s.shutdownCh)
+	s.unregister()
 
 	if s.ipv4List != nil {
 		s.ipv4List.Close()
@@ -97,6 +143,7 @@ func (s *Server) Shutdown() error {
 	if s.ipv6List != nil {
 		s.ipv6List.Close()
 	}
+
 	return nil
 }
 
@@ -222,12 +269,12 @@ func (s *Server) handleQuery(query *dns.Msg, from net.Addr) error {
 	}
 
 	if mresp := resp(false); mresp != nil {
-		if err := s.sendResponse(mresp, from, false); err != nil {
+		if err := s.sendResponse(mresp, from); err != nil {
 			return fmt.Errorf("mdns: error sending multicast response: %v", err)
 		}
 	}
 	if uresp := resp(true); uresp != nil {
-		if err := s.sendResponse(uresp, from, true); err != nil {
+		if err := s.sendResponse(uresp, from); err != nil {
 			return fmt.Errorf("mdns: error sending unicast response: %v", err)
 		}
 	}
@@ -256,14 +303,100 @@ func (s *Server) handleQuestion(q dns.Question) (multicastRecs, unicastRecs []dn
 	//     In the Question Section of a Multicast DNS query, the top bit of the
 	//     qclass field is used to indicate that unicast responses are preferred
 	//     for this particular question.  (See Section 5.4.)
-	if q.Qclass&(1<<15) != 0 || forceUnicastResponses {
+	if q.Qclass&(1<<15) != 0 {
 		return nil, records
 	}
 	return records, nil
 }
 
+func (s *Server) probe() {
+	sd, ok := s.config.Zone.(*MDNSService)
+	if !ok {
+		return
+	}
+
+	name := fmt.Sprintf("%s.%s.%s.", sd.Instance, trimDot(sd.Service), trimDot(sd.Domain))
+
+	q := new(dns.Msg)
+	q.SetQuestion(name, dns.TypePTR)
+	q.RecursionDesired = false
+
+	srv := &dns.SRV{
+		Hdr: dns.RR_Header{
+			Name:   name,
+			Rrtype: dns.TypeSRV,
+			Class:  dns.ClassINET,
+			Ttl:    defaultTTL,
+		},
+		Priority: 0,
+		Weight:   0,
+		Port:     uint16(sd.Port),
+		Target:   sd.HostName,
+	}
+	txt := &dns.TXT{
+		Hdr: dns.RR_Header{
+			Name:   name,
+			Rrtype: dns.TypeTXT,
+			Class:  dns.ClassINET,
+			Ttl:    defaultTTL,
+		},
+		Txt: sd.TXT,
+	}
+	q.Ns = []dns.RR{srv, txt}
+
+	randomizer := rand.New(rand.NewSource(time.Now().UnixNano()))
+
+	for i := 0; i < 3; i++ {
+		if err := s.multicastResponse(q); err != nil {
+			log.Println("[ERR] mdns: failed to send probe:", err.Error())
+		}
+		time.Sleep(time.Duration(randomizer.Intn(250)) * time.Millisecond)
+	}
+
+	resp := new(dns.Msg)
+	resp.MsgHdr.Response = true
+
+	// set for query
+	q.SetQuestion(name, dns.TypeANY)
+
+	resp.Answer = append(resp.Answer, s.config.Zone.Records(q.Question[0])...)
+
+	// reset
+	q.SetQuestion(name, dns.TypePTR)
+
+	// From RFC6762
+	//    The Multicast DNS responder MUST send at least two unsolicited
+	//    responses, one second apart. To provide increased robustness against
+	//    packet loss, a responder MAY send up to eight unsolicited responses,
+	//    provided that the interval between unsolicited responses increases by
+	//    at least a factor of two with every response sent.
+	timeout := 1 * time.Second
+	for i := 0; i < 3; i++ {
+		if err := s.multicastResponse(resp); err != nil {
+			log.Println("[ERR] mdns: failed to send announcement:", err.Error())
+		}
+		time.Sleep(timeout)
+		timeout *= 2
+	}
+}
+
+// multicastResponse us used to send a multicast response packet
+func (s *Server) multicastResponse(msg *dns.Msg) error {
+	buf, err := msg.Pack()
+	if err != nil {
+		return err
+	}
+	if s.ipv4List != nil {
+		s.ipv4List.WriteToUDP(buf, ipv4Addr)
+	}
+	if s.ipv6List != nil {
+		s.ipv6List.WriteToUDP(buf, ipv6Addr)
+	}
+	return nil
+}
+
 // sendResponse is used to send a response packet
-func (s *Server) sendResponse(resp *dns.Msg, from net.Addr, unicast bool) error {
+func (s *Server) sendResponse(resp *dns.Msg, from net.Addr) error {
 	// TODO(reddaly): Respect the unicast argument, and allow sending responses
 	// over multicast.
 	buf, err := resp.Pack()
@@ -280,4 +413,23 @@ func (s *Server) sendResponse(resp *dns.Msg, from net.Addr, unicast bool) error 
 		_, err = s.ipv6List.WriteToUDP(buf, addr)
 		return err
 	}
+}
+
+func (s *Server) unregister() error {
+	sd, ok := s.config.Zone.(*MDNSService)
+	if !ok {
+		return nil
+	}
+
+	sd.TTL = 0
+	name := fmt.Sprintf("%s.%s.%s.", sd.Instance, trimDot(sd.Service), trimDot(sd.Domain))
+
+	q := new(dns.Msg)
+	q.SetQuestion(name, dns.TypeANY)
+
+	resp := new(dns.Msg)
+	resp.MsgHdr.Response = true
+	resp.Answer = append(resp.Answer, s.config.Zone.Records(q.Question[0])...)
+
+	return s.multicastResponse(resp)
 }
