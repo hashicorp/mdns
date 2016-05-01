@@ -182,17 +182,40 @@ func newClient() (*client, error) {
 		return nil, fmt.Errorf("failed to bind to any unicast udp port")
 	}
 
-	mconn4, err := net.ListenMulticastUDP("udp4", nil, ipv4Addr)
+	mconn4, err := net.ListenUDP("udp4", mdnsWildcardAddrIPv4)
 	if err != nil {
 		log.Printf("[ERR] mdns: Failed to bind to udp4 port: %v", err)
 	}
-	mconn6, err := net.ListenMulticastUDP("udp6", nil, ipv6Addr)
+	mconn6, err := net.ListenUDP("udp6", mdnsWildcardAddrIPv6)
 	if err != nil {
 		log.Printf("[ERR] mdns: Failed to bind to udp6 port: %v", err)
 	}
 
 	if mconn4 == nil && mconn6 == nil {
 		return nil, fmt.Errorf("failed to bind to any multicast udp port")
+	}
+
+	p1 := ipv4.NewPacketConn(mconn4)
+	p2 := ipv6.NewPacketConn(mconn6)
+
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil, err
+	}
+
+	var errCount1, errCount2 int
+
+	for _, iface := range ifaces {
+		if err := p1.JoinGroup(&iface, &net.UDPAddr{IP: mdnsGroupIPv4}); err != nil {
+			errCount1++
+		}
+		if err := p2.JoinGroup(&iface, &net.UDPAddr{IP: mdnsGroupIPv6}); err != nil {
+			errCount2++
+		}
+	}
+
+	if len(ifaces) == errCount1 && len(ifaces) == errCount2 {
+		return nil, fmt.Errorf("Failed to join multicast group on all interfaces!")
 	}
 
 	c := &client{
