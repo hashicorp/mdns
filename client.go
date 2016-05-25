@@ -5,7 +5,6 @@ import (
 	"log"
 	"net"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/hashicorp/go.net/ipv4"
@@ -102,9 +101,8 @@ type client struct {
 	ipv4MulticastConn *net.UDPConn
 	ipv6MulticastConn *net.UDPConn
 
-	closed    bool
-	closedCh  chan struct{} // TODO(reddaly): This doesn't appear to be used.
-	closeLock sync.Mutex
+	closed   bool
+	closedCh chan struct{} // TODO(reddaly): This doesn't appear to be used.
 }
 
 // NewClient creates a new mdns Client that can be used to query
@@ -150,9 +148,6 @@ func newClient() (*client, error) {
 
 // Close is used to cleanup the client
 func (c *client) Close() error {
-	c.closeLock.Lock()
-	defer c.closeLock.Unlock()
-
 	if c.closed {
 		return nil
 	}
@@ -328,6 +323,12 @@ func (c *client) recv(l *net.UDPConn, msgCh chan *dns.Msg) {
 	buf := make([]byte, 65536)
 	for !c.closed {
 		n, err := l.Read(buf)
+
+		// if we're closing just ignore Read() error when it returns
+		if c.closed {
+			return
+		}
+
 		if err != nil {
 			log.Printf("[ERR] mdns: Failed to read packet: %v", err)
 			continue
