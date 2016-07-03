@@ -95,13 +95,13 @@ func NewMDNSService(instance, service, domain, hostName string, port int, ips []
 
 	if len(ips) == 0 {
 		var err error
-		ips, err = net.LookupIP(hostName)
+		ips, err = net.LookupIP(trimDot(hostName))
 		if err != nil {
 			// Try appending the host domain suffix and lookup again
 			// (required for Linux-based hosts)
 			tmpHostName := fmt.Sprintf("%s%s", hostName, domain)
 
-			ips, err = net.LookupIP(tmpHostName)
+			ips, err = net.LookupIP(trimDot(tmpHostName))
 
 			if err != nil {
 				return nil, fmt.Errorf("could not determine host IP addresses for %s", hostName)
