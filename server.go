@@ -60,6 +60,7 @@ type Server struct {
 	shutdown     bool
 	shutdownCh   chan struct{}
 	shutdownLock sync.Mutex
+	wg           sync.WaitGroup
 }
 
 // NewServer is used to create a new mDNS server from a config
@@ -119,6 +120,7 @@ func NewServer(config *Config) (*Server, error) {
 		go s.recv(s.ipv6List)
 	}
 
+	s.wg.Add(1)
 	go s.probe()
 
 	return s, nil
@@ -144,6 +146,7 @@ func (s *Server) Shutdown() error {
 		s.ipv6List.Close()
 	}
 
+	s.wg.Wait()
 	return nil
 }
 
@@ -310,6 +313,8 @@ func (s *Server) handleQuestion(q dns.Question) (multicastRecs, unicastRecs []dn
 }
 
 func (s *Server) probe() {
+	defer s.wg.Done()
+
 	sd, ok := s.config.Zone.(*MDNSService)
 	if !ok {
 		return
@@ -371,12 +376,19 @@ func (s *Server) probe() {
 	//    provided that the interval between unsolicited responses increases by
 	//    at least a factor of two with every response sent.
 	timeout := 1 * time.Second
+	timer := time.NewTimer(timeout)
 	for i := 0; i < 3; i++ {
 		if err := s.multicastResponse(resp); err != nil {
 			log.Println("[ERR] mdns: failed to send announcement:", err.Error())
 		}
-		time.Sleep(timeout)
-		timeout *= 2
+		select {
+		case <-timer.C:
+			timeout *= 2
+			timer.Reset(timeout)
+		case <-s.shutdownCh:
+			timer.Stop()
+			return
+		}
 	}
 }
 
