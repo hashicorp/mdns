@@ -5,7 +5,6 @@ import (
 	"log"
 	"net"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/hashicorp/go.net/ipv4"
@@ -96,15 +95,11 @@ func Lookup(service string, entries chan<- *ServiceEntry) error {
 // Client provides a query interface that can be used to
 // search for service providers using mDNS
 type client struct {
-	ipv4UnicastConn *net.UDPConn
-	ipv6UnicastConn *net.UDPConn
-
+	ipv4UnicastConn   *net.UDPConn
+	ipv6UnicastConn   *net.UDPConn
 	ipv4MulticastConn *net.UDPConn
 	ipv6MulticastConn *net.UDPConn
-
-	closed    bool
-	closedCh  chan struct{} // TODO(reddaly): This doesn't appear to be used.
-	closeLock sync.Mutex
+	closedCh          chan struct{}
 }
 
 // NewClient creates a new mdns Client that can be used to query
@@ -150,17 +145,8 @@ func newClient() (*client, error) {
 
 // Close is used to cleanup the client
 func (c *client) Close() error {
-	log.Printf("[INFO] mdns: Closing client %v", *c)
-	c.closeLock.Lock()
-	defer c.closeLock.Unlock()
-
-	if c.closed {
-		return nil
-	}
-	c.closed = true
-
+	log.Printf("[INFO] mdns: Closing client: %v", *c)
 	close(c.closedCh)
-
 	if c.ipv4UnicastConn != nil {
 		c.ipv4UnicastConn.Close()
 	}
@@ -173,7 +159,6 @@ func (c *client) Close() error {
 	if c.ipv6MulticastConn != nil {
 		c.ipv6MulticastConn.Close()
 	}
-
 	return nil
 }
 
@@ -341,26 +326,25 @@ func (c *client) recv(l *net.UDPConn, msgCh chan *dns.Msg) {
 	}
 	buf := make([]byte, 65536)
 	for {
-		c.closeLock.Lock()
-		if c.closed {
-			c.closeLock.Unlock()
-			return
-		}
-		c.closeLock.Unlock()
-		n, err := l.Read(buf)
-		if err != nil {
-			log.Printf("[ERR] mdns: Failed to read packet: %v", err)
-			continue
-		}
-		msg := new(dns.Msg)
-		if err := msg.Unpack(buf[:n]); err != nil {
-			log.Printf("[ERR] mdns: Failed to unpack packet: %v", err)
-			continue
-		}
 		select {
-		case msgCh <- msg:
 		case <-c.closedCh:
 			return
+		default:
+			n, err := l.Read(buf)
+			if err != nil {
+				log.Printf("[ERR] mdns: Failed to read packet: %v", err)
+				continue
+			}
+			msg := new(dns.Msg)
+			if err := msg.Unpack(buf[:n]); err != nil {
+				log.Printf("[ERR] mdns: Failed to unpack packet: %v", err)
+				continue
+			}
+			select {
+			case msgCh <- msg:
+			case <-c.closedCh:
+				return
+			}
 		}
 	}
 }
