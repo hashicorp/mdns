@@ -335,6 +335,8 @@ func (c *client) query(params *QueryParam) error {
 				inp.sent = true
 				select {
 				case params.Entries <- inp:
+				case <-finish:
+					return nil
 				}
 			} else {
 				// Fire off a node specific query
