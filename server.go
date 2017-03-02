@@ -111,7 +111,7 @@ func (s *Server) recv(c *net.UDPConn) {
 		return
 	}
 	buf := make([]byte, 65536)
-	for !s.shutdown {
+	for !shutdown(s) {
 		n, from, err := c.ReadFrom(buf)
 		if err != nil {
 			continue
@@ -120,6 +120,12 @@ func (s *Server) recv(c *net.UDPConn) {
 			log.Printf("[ERR] mdns: Failed to handle query: %v", err)
 		}
 	}
+}
+
+func shutdown(s *Server) bool {
+	s.shutdownLock.Lock()
+	defer s.shutdownLock.Unlock()
+	return s.shutdown
 }
 
 // parsePacket is used to parse an incoming packet

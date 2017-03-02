@@ -326,7 +326,7 @@ func (c *client) recv(l *net.UDPConn, msgCh chan *dns.Msg) {
 		return
 	}
 	buf := make([]byte, 65536)
-	for !c.closed {
+	for closed(c) {
 		n, err := l.Read(buf)
 		if err != nil {
 			log.Printf("[ERR] mdns: Failed to read packet: %v", err)
@@ -343,6 +343,12 @@ func (c *client) recv(l *net.UDPConn, msgCh chan *dns.Msg) {
 			return
 		}
 	}
+}
+
+func closed(c *client) bool {
+	c.closeLock.Lock()
+	defer c.closeLock.Unlock()
+	return c.closed
 }
 
 // ensureName is used to ensure the named node is in progress
