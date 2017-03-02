@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/hashicorp/go.net/ipv4"
-	"github.com/hashicorp/go.net/ipv6"
 	"github.com/miekg/dns"
+	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
 
 // ServiceEntry is returned after we query for a service
