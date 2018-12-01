@@ -17,7 +17,7 @@ environments.
 
 Using the library is very simple, here is an example of publishing a service entry:
 
-```
+```go
 package main
 
 import (
@@ -41,7 +41,7 @@ func main() {
 
 Doing a lookup for service providers is also very simple:
 
-```
+```go
 package main
 
 import (
