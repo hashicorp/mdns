@@ -1,12 +1,19 @@
 # MDNS [![GoDoc](https://godoc.org/github.com/micro/mdns?status.svg)](https://godoc.org/github.com/micro/mdns)
 
-Simple mDNS client/server library in Golang. mDNS or Multicast DNS can be
-used to discover services on the local network without the use of an authoritative
+MDNS is a simple mdns client/server library by Hashicorp.
+
+We maintain a fork with updates for PRs and issues they have not merged or addressed.
+
+## Overview
+
+MDNS or Multicast DNS can be used to discover services on the local network without the use of an authoritative
 DNS server. This enables peer-to-peer discovery. It is important to note that many
 networks restrict the use of multicasting, which prevents mDNS from functioning.
 Notably, multicast cannot be used in any sort of cloud, or shared infrastructure
 environment. However it works well in most office, home, or private infrastructure
 environments.
+
+## Usage
 
 Using the library is very simple, here is an example of publishing a service entry:
 
