@@ -191,6 +191,13 @@ func newClient() (*client, error) {
 		return nil, fmt.Errorf("failed to bind to any unicast udp port")
 	}
 
+	if uconn4 == nil {
+		uconn4 = &net.UDPConn{}
+	}
+	if uconn6 == nil {
+		uconn6 = &net.UDPConn{}
+	}
+
 	mconn4, err := net.ListenUDP("udp4", mdnsWildcardAddrIPv4)
 	if err != nil {
 		log.Printf("[ERR] mdns: Failed to bind to udp4 port: %v", err)
@@ -202,6 +209,13 @@ func newClient() (*client, error) {
 
 	if mconn4 == nil && mconn6 == nil {
 		return nil, fmt.Errorf("failed to bind to any multicast udp port")
+	}
+
+	if mconn4 == nil {
+		mconn4 = &net.UDPConn{}
+	}
+	if mconn6 == nil {
+		mconn6 = &net.UDPConn{}
 	}
 
 	p1 := ipv4.NewPacketConn(mconn4)
