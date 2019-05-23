@@ -73,6 +73,13 @@ func NewServer(config *Config) (*Server, error) {
 		return nil, fmt.Errorf("[ERR] mdns: Failed to bind to any udp port!")
 	}
 
+	if ipv4List == nil {
+		ipv4List = &net.UDPConn{}
+	}
+	if ipv6List == nil {
+		ipv6List = &net.UDPConn{}
+	}
+
 	// Join multicast groups to receive announcements
 	p1 := ipv4.NewPacketConn(ipv4List)
 	p2 := ipv6.NewPacketConn(ipv6List)
@@ -112,13 +119,8 @@ func NewServer(config *Config) (*Server, error) {
 		shutdownCh: make(chan struct{}),
 	}
 
-	if ipv4List != nil {
-		go s.recv(s.ipv4List)
-	}
-
-	if ipv6List != nil {
-		go s.recv(s.ipv6List)
-	}
+	go s.recv(s.ipv4List)
+	go s.recv(s.ipv6List)
 
 	s.wg.Add(1)
 	go s.probe()
