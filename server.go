@@ -182,6 +182,10 @@ func (s *Server) parsePacket(packet []byte, from net.Addr) error {
 		log.Printf("[ERR] mdns: Failed to unpack packet: %v", err)
 		return err
 	}
+	// TODO: This is a bit of a hack
+	// We decided to ignore some mDNS answers for the time being
+	// See: https://tools.ietf.org/html/rfc6762#section-7.2
+	msg.Truncated = false
 	return s.handleQuery(&msg, from)
 }
 
