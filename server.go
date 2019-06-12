@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	mdnsGroupIPv4 = net.IPv4(224, 0, 0, 251)
+	mdnsGroupIPv4 = net.ParseIP("224.0.0.251")
 	mdnsGroupIPv6 = net.ParseIP("ff02::fb")
 
 	// mDNS wildcard addresses
