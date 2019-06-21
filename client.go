@@ -211,15 +211,11 @@ func newClient() (*client, error) {
 		return nil, fmt.Errorf("failed to bind to any multicast udp port")
 	}
 
-	if mconn4 == nil {
-		mconn4 = &net.UDPConn{}
-	}
-	if mconn6 == nil {
-		mconn6 = &net.UDPConn{}
-	}
-
 	p1 := ipv4.NewPacketConn(mconn4)
 	p2 := ipv6.NewPacketConn(mconn6)
+
+	p1.SetMulticastLoopback(true)
+	p2.SetMulticastLoopback(true)
 
 	ifaces, err := net.Interfaces()
 	if err != nil {
