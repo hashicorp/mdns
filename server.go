@@ -14,7 +14,7 @@ import (
 )
 
 var (
-	mdnsGroupIPv4 = net.IPv4(224, 0, 0, 251)
+	mdnsGroupIPv4 = net.ParseIP("224.0.0.251")
 	mdnsGroupIPv6 = net.ParseIP("ff02::fb")
 
 	// mDNS wildcard addresses
@@ -358,7 +358,7 @@ func (s *Server) probe() {
 	randomizer := rand.New(rand.NewSource(time.Now().UnixNano()))
 
 	for i := 0; i < 3; i++ {
-		if err := s.multicastResponse(q); err != nil {
+		if err := s.SendMulticast(q); err != nil {
 			log.Println("[ERR] mdns: failed to send probe:", err.Error())
 		}
 		time.Sleep(time.Duration(randomizer.Intn(250)) * time.Millisecond)
@@ -384,7 +384,7 @@ func (s *Server) probe() {
 	timeout := 1 * time.Second
 	timer := time.NewTimer(timeout)
 	for i := 0; i < 3; i++ {
-		if err := s.multicastResponse(resp); err != nil {
+		if err := s.SendMulticast(resp); err != nil {
 			log.Println("[ERR] mdns: failed to send announcement:", err.Error())
 		}
 		select {
@@ -399,7 +399,7 @@ func (s *Server) probe() {
 }
 
 // multicastResponse us used to send a multicast response packet
-func (s *Server) multicastResponse(msg *dns.Msg) error {
+func (s *Server) SendMulticast(msg *dns.Msg) error {
 	buf, err := msg.Pack()
 	if err != nil {
 		return err
@@ -449,5 +449,5 @@ func (s *Server) unregister() error {
 	resp.MsgHdr.Response = true
 	resp.Answer = append(resp.Answer, s.config.Zone.Records(q.Question[0])...)
 
-	return s.multicastResponse(resp)
+	return s.SendMulticast(resp)
 }
