@@ -176,15 +176,23 @@ type client struct {
 // NewClient creates a new mdns Client that can be used to query
 // for records
 func newClient() (*client, error) {
+	c := &client{
+		closedCh:          make(chan struct{}),
+	}
+
 	// TODO(reddaly): At least attempt to bind to the port required in the spec.
 	// Create a IPv4 listener
 	uconn4, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
 	if err != nil {
 		log.Printf("[ERR] mdns: Failed to bind to udp4 port: %v", err)
+	} else {
+		c.ipv4UnicastConn = uconn4
 	}
 	uconn6, err := net.ListenUDP("udp6", &net.UDPAddr{IP: net.IPv6zero, Port: 0})
 	if err != nil {
 		log.Printf("[ERR] mdns: Failed to bind to udp6 port: %v", err)
+	} else {
+		c.ipv6UnicastConn = uconn6
 	}
 
 	if uconn4 == nil && uconn6 == nil {
@@ -201,21 +209,32 @@ func newClient() (*client, error) {
 	mconn4, err := net.ListenUDP("udp4", mdnsWildcardAddrIPv4)
 	if err != nil {
 		log.Printf("[ERR] mdns: Failed to bind to udp4 port: %v", err)
+	} else {
+		c.ipv4MulticastConn = mconn4
 	}
 	mconn6, err := net.ListenUDP("udp6", mdnsWildcardAddrIPv6)
 	if err != nil {
 		log.Printf("[ERR] mdns: Failed to bind to udp6 port: %v", err)
+	} else {
+		c.ipv6MulticastConn = mconn6
 	}
 
 	if mconn4 == nil && mconn6 == nil {
 		return nil, fmt.Errorf("failed to bind to any multicast udp port")
 	}
 
-	p1 := ipv4.NewPacketConn(mconn4)
-	p2 := ipv6.NewPacketConn(mconn6)
+	var p1 *ipv4.PacketConn
+	if mconn4 != nil {
+		p1 = ipv4.NewPacketConn(mconn4)
+		p1.SetMulticastLoopback(true)
+	}
 
-	p1.SetMulticastLoopback(true)
-	p2.SetMulticastLoopback(true)
+	var p2 *ipv6.PacketConn
+	if mconn6 != nil {
+		p2 = ipv6.NewPacketConn(mconn6)
+		p2.SetMulticastLoopback(true)
+	}
+
 
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -225,11 +244,16 @@ func newClient() (*client, error) {
 	var errCount1, errCount2 int
 
 	for _, iface := range ifaces {
-		if err := p1.JoinGroup(&iface, &net.UDPAddr{IP: mdnsGroupIPv4}); err != nil {
-			errCount1++
+		if p1 != nil {
+			if err := p1.JoinGroup(&iface, &net.UDPAddr{IP: mdnsGroupIPv4}); err != nil {
+				errCount1++
+			}
 		}
-		if err := p2.JoinGroup(&iface, &net.UDPAddr{IP: mdnsGroupIPv6}); err != nil {
-			errCount2++
+
+		if p2 != nil {
+			if err := p2.JoinGroup(&iface, &net.UDPAddr{IP: mdnsGroupIPv6}); err != nil {
+				errCount2++
+			}
 		}
 	}
 
@@ -237,13 +261,13 @@ func newClient() (*client, error) {
 		return nil, fmt.Errorf("Failed to join multicast group on all interfaces!")
 	}
 
-	c := &client{
-		ipv4MulticastConn: mconn4,
-		ipv6MulticastConn: mconn6,
-		ipv4UnicastConn:   uconn4,
-		ipv6UnicastConn:   uconn6,
-		closedCh:          make(chan struct{}),
-	}
+	//c := &client{
+	//	ipv4MulticastConn: mconn4,
+	//	ipv6MulticastConn: mconn6,
+	//	ipv4UnicastConn:   uconn4,
+	//	ipv6UnicastConn:   uconn6,
+	//	closedCh:          make(chan struct{}),
+	//}
 	return c, nil
 }
 
