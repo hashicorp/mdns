@@ -177,7 +177,7 @@ type client struct {
 // for records
 func newClient() (*client, error) {
 	c := &client{
-		closedCh:          make(chan struct{}),
+		closedCh: make(chan struct{}),
 	}
 
 	// TODO(reddaly): At least attempt to bind to the port required in the spec.
@@ -235,7 +235,6 @@ func newClient() (*client, error) {
 		p2.SetMulticastLoopback(true)
 	}
 
-
 	ifaces, err := net.Interfaces()
 	if err != nil {
 		return nil, err
@@ -261,13 +260,6 @@ func newClient() (*client, error) {
 		return nil, fmt.Errorf("Failed to join multicast group on all interfaces!")
 	}
 
-	//c := &client{
-	//	ipv4MulticastConn: mconn4,
-	//	ipv6MulticastConn: mconn6,
-	//	ipv4UnicastConn:   uconn4,
-	//	ipv6UnicastConn:   uconn6,
-	//	closedCh:          make(chan struct{}),
-	//}
 	return c, nil
 }
 
