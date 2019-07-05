@@ -199,40 +199,30 @@ func newClient() (*client, error) {
 		return nil, fmt.Errorf("failed to bind to any unicast udp port")
 	}
 
-	if uconn4 == nil {
-		uconn4 = &net.UDPConn{}
-	}
-	if uconn6 == nil {
-		uconn6 = &net.UDPConn{}
-	}
-
+	var p1 *ipv4.PacketConn
 	mconn4, err := net.ListenUDP("udp4", mdnsWildcardAddrIPv4)
 	if err != nil {
 		log.Printf("[ERR] mdns: Failed to bind to udp4 port: %v", err)
 	} else {
 		c.ipv4MulticastConn = mconn4
-	}
-	mconn6, err := net.ListenUDP("udp6", mdnsWildcardAddrIPv6)
-	if err != nil {
-		log.Printf("[ERR] mdns: Failed to bind to udp6 port: %v", err)
-	} else {
-		c.ipv6MulticastConn = mconn6
-	}
 
-	if mconn4 == nil && mconn6 == nil {
-		return nil, fmt.Errorf("failed to bind to any multicast udp port")
-	}
-
-	var p1 *ipv4.PacketConn
-	if mconn4 != nil {
 		p1 = ipv4.NewPacketConn(mconn4)
 		p1.SetMulticastLoopback(true)
 	}
 
 	var p2 *ipv6.PacketConn
-	if mconn6 != nil {
+	mconn6, err := net.ListenUDP("udp6", mdnsWildcardAddrIPv6)
+	if err != nil {
+		log.Printf("[ERR] mdns: Failed to bind to udp6 port: %v", err)
+	} else {
+		c.ipv6MulticastConn = mconn6
+
 		p2 = ipv6.NewPacketConn(mconn6)
 		p2.SetMulticastLoopback(true)
+	}
+
+	if mconn4 == nil && mconn6 == nil {
+		return nil, fmt.Errorf("failed to bind to any multicast udp port")
 	}
 
 	ifaces, err := net.Interfaces()
