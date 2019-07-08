@@ -178,26 +178,20 @@ type client struct {
 func newClient() (*client, error) {
 	// TODO(reddaly): At least attempt to bind to the port required in the spec.
 	// Create a IPv4 listener
-	uconn4, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
-	if err != nil {
-		log.Printf("[ERR] mdns: Failed to bind to udp4 port: %v", err)
-	}
-	uconn6, err := net.ListenUDP("udp6", &net.UDPAddr{IP: net.IPv6zero, Port: 0})
-	if err != nil {
-		log.Printf("[ERR] mdns: Failed to bind to udp6 port: %v", err)
+	uconn4, err4 := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
+	uconn6, err6 := net.ListenUDP("udp6", &net.UDPAddr{IP: net.IPv6zero, Port: 0})
+	if err4 != nil && err6 != nil {
+		log.Printf("[ERR] mdns: Failed to bind to udp port: %v %v", err4, err6)
 	}
 
 	if uconn4 == nil && uconn6 == nil {
 		return nil, fmt.Errorf("failed to bind to any unicast udp port")
 	}
 
-	mconn4, err := net.ListenMulticastUDP("udp4", nil, ipv4Addr)
-	if err != nil {
-		log.Printf("[ERR] mdns: Failed to bind to udp4 port: %v", err)
-	}
-	mconn6, err := net.ListenMulticastUDP("udp6", nil, ipv6Addr)
-	if err != nil {
-		log.Printf("[ERR] mdns: Failed to bind to udp6 port: %v", err)
+	mconn4, err4 := net.ListenMulticastUDP("udp4", nil, ipv4Addr)
+	mconn6, err6 := net.ListenMulticastUDP("udp6", nil, ipv6Addr)
+	if err4 != nil && err6 != nil {
+		log.Printf("[ERR] mdns: Failed to bind to multicast udp port: %v %v", err4, err6)
 	}
 
 	if mconn4 == nil && mconn6 == nil {
