@@ -13,8 +13,9 @@ Using the library is very simple, here is an example of publishing a service ent
 
     // Setup our service export
     host, _ := os.Hostname()
-    info := []string{"My awesome service"},
-    service, _ := NewMDNSService(host, "_foobar._tcp", "", "", 8000, nil, info)
+    instance := fmt.Sprintf("%s:%d", host, 8000)
+    info := []string{"My awesome service"}
+    service, _ := NewMDNSService(instance, "_foobar._tcp", "", "", 8000, nil, info)
 
     // Create the mDNS server, defer shutdown
     server, _ := mdns.NewServer(&mdns.Config{Zone: service})
