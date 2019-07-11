@@ -23,7 +23,7 @@ type Zone interface {
 
 // MDNSService is used to export a named service by implementing a Zone
 type MDNSService struct {
-	Instance string   // Instance name (e.g. "hostService name")
+	Instance string   // Instance name, must be unique (e.g. "hostName:port")
 	Service  string   // Service name (e.g. "_http._tcp.")
 	Domain   string   // If blank, assumes "local"
 	HostName string   // Host machine DNS name (e.g. "mymachine.net.")
