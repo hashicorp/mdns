@@ -87,7 +87,9 @@ func NewMDNSService(instance, service, domain, hostName string, port int, ips []
 		if err != nil {
 			return nil, fmt.Errorf("could not determine host: %v", err)
 		}
-		hostName = fmt.Sprintf("%s.", hostName)
+		// golang os.Hostname() doesn't return fqdn by default.
+		// Suffixing it by the provided domain
+		hostName = fmt.Sprintf("%s.%s", hostName, domain)
 	}
 	if err := validateFQDN(hostName); err != nil {
 		return nil, fmt.Errorf("hostName %q is not a fully-qualified domain name: %v", hostName, err)
@@ -104,7 +106,52 @@ func NewMDNSService(instance, service, domain, hostName string, port int, ips []
 			ips, err = net.LookupIP(tmpHostName)
 
 			if err != nil {
-				return nil, fmt.Errorf("could not determine host IP addresses for %s", hostName)
+				// save current error
+				lookuperr := err
+
+				// If hostname didn't resolve, provide local ip addresses
+				ips = make([]net.IP, 0)
+
+				// list network intrefaces
+				ifaces, err := net.Interfaces()
+				if err != nil {
+					return nil, fmt.Errorf("could not list network interfaces: %v", err)
+				}
+				if len(ifaces) == 0 {
+					return nil, fmt.Errorf("no network interfaces found")
+				}
+
+				for _, i := range ifaces {
+					// get interfaces addresses
+					addrs, err := i.Addrs()
+					if err != nil {
+						continue
+					}
+
+					for _, addr := range addrs {
+						// get the ip address
+						var ip net.IP
+						switch v := addr.(type) {
+						case *net.IPNet:
+							ip = v.IP
+						case *net.IPAddr:
+							ip = v.IP
+						}
+						if ip == nil {
+							continue
+						}
+
+						// add the ip address to the list
+						if ip.IsGlobalUnicast() {
+							ips = append(ips, ip)
+						}
+					}
+				}
+
+				// if there is still no ip address report error
+				if len(ips) == 0 {
+					return nil, fmt.Errorf("hostname unresolved and no ip addresses found: %v", lookuperr)
+				}
 			}
 		}
 	}
