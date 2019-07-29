@@ -188,6 +188,14 @@ func newClient() (*client, error) {
 		return nil, fmt.Errorf("failed to bind to any unicast udp port")
 	}
 
+	if uconn4 == nil {
+		uconn4 = &net.UDPConn{}
+	}
+
+	if uconn6 == nil {
+		uconn6 = &net.UDPConn{}
+	}
+
 	mconn4, err4 := net.ListenMulticastUDP("udp4", nil, ipv4Addr)
 	mconn6, err6 := net.ListenMulticastUDP("udp6", nil, ipv6Addr)
 	if err4 != nil && err6 != nil {
