@@ -110,8 +110,8 @@ func Listen(entries chan<- *ServiceEntry, exit chan struct{}) error {
 	// Start listening for response packets
 	msgCh := make(chan *dns.Msg, 32)
 
-	go client.recv(client.ipv4MulticastConn, msgCh)
-	go client.recv(client.ipv6MulticastConn, msgCh)
+	go client.recv(client.ipv4UnicastConn, msgCh)
+	go client.recv(client.ipv6UnicastConn, msgCh)
 	go client.recv(client.ipv4MulticastConn, msgCh)
 	go client.recv(client.ipv6MulticastConn, msgCh)
 
