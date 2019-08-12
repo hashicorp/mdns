@@ -47,6 +47,9 @@ type Config struct {
 	// interface. If not provided, the system default multicase interface
 	// is used.
 	Iface *net.Interface
+
+	// Port If it is not 0, replace the port 5353 with this port number.
+	Port int
 }
 
 // mDNS server is used to listen for mDNS queries and respond if we
@@ -65,6 +68,13 @@ type Server struct {
 
 // NewServer is used to create a new mDNS server from a config
 func NewServer(config *Config) (*Server, error) {
+	if config.Port != 0 {
+		mdnsWildcardAddrIPv4.Port = config.Port
+		mdnsWildcardAddrIPv6.Port = config.Port
+		ipv4Addr.Port = config.Port
+		ipv6Addr.Port = config.Port
+	}
+
 	// Create the listeners
 	// Create wildcard connections (because :5353 can be already taken by other apps)
 	ipv4List, _ := net.ListenUDP("udp4", mdnsWildcardAddrIPv4)
