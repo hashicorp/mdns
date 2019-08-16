@@ -68,12 +68,7 @@ type Server struct {
 
 // NewServer is used to create a new mDNS server from a config
 func NewServer(config *Config) (*Server, error) {
-	if config.Port != 0 {
-		mdnsWildcardAddrIPv4.Port = config.Port
-		mdnsWildcardAddrIPv6.Port = config.Port
-		ipv4Addr.Port = config.Port
-		ipv6Addr.Port = config.Port
-	}
+	setCustomPort(config.Port)
 
 	// Create the listeners
 	// Create wildcard connections (because :5353 can be already taken by other apps)
@@ -460,4 +455,21 @@ func (s *Server) unregister() error {
 	resp.Answer = append(resp.Answer, s.config.Zone.Records(q.Question[0])...)
 
 	return s.SendMulticast(resp)
+}
+
+func setCustomPort(port int) {
+	if port != 0 {
+		if mdnsWildcardAddrIPv4.Port != port {
+			mdnsWildcardAddrIPv4.Port = port
+		}
+		if mdnsWildcardAddrIPv6.Port != port {
+			mdnsWildcardAddrIPv6.Port = port
+		}
+		if ipv4Addr.Port != port {
+			ipv4Addr.Port = port
+		}
+		if ipv6Addr.Port != port {
+			ipv6Addr.Port = port
+		}
+	}
 }
