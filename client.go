@@ -26,7 +26,6 @@ type ServiceEntry struct {
 	Addr net.IP // @Deprecated
 
 	hasTXT bool
-	sent   bool
 }
 
 // complete is used to check if we have all the info we need
@@ -278,12 +277,10 @@ func (c *client) query(params *QueryParam) error {
 
 			// Check if this entry is complete
 			if inp.complete() {
-				if inp.sent {
-					continue
-				}
-				inp.sent = true
+				copyInp := *inp // copy inp because we send it into another thread
+				// which can cause data race
 				select {
-				case params.Entries <- inp:
+				case params.Entries <- &copyInp:
 				default:
 				}
 			} else {
