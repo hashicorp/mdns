@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync/atomic"
 
 	"github.com/miekg/dns"
 )
@@ -163,7 +164,7 @@ func (m *MDNSService) serviceEnum(q dns.Question) []dns.RR {
 				Name:   q.Name,
 				Rrtype: dns.TypePTR,
 				Class:  dns.ClassINET,
-				Ttl:    m.TTL,
+				Ttl:    atomic.LoadUint32(&m.TTL),
 			},
 			Ptr: m.serviceAddr,
 		}
@@ -185,7 +186,7 @@ func (m *MDNSService) serviceRecords(q dns.Question) []dns.RR {
 				Name:   q.Name,
 				Rrtype: dns.TypePTR,
 				Class:  dns.ClassINET,
-				Ttl:    m.TTL,
+				Ttl:    atomic.LoadUint32(&m.TTL),
 			},
 			Ptr: m.instanceAddr,
 		}
@@ -230,7 +231,7 @@ func (m *MDNSService) instanceRecords(q dns.Question) []dns.RR {
 						Name:   m.HostName,
 						Rrtype: dns.TypeA,
 						Class:  dns.ClassINET,
-						Ttl:    m.TTL,
+						Ttl:    atomic.LoadUint32(&m.TTL),
 					},
 					A: ip4,
 				})
@@ -255,7 +256,7 @@ func (m *MDNSService) instanceRecords(q dns.Question) []dns.RR {
 						Name:   m.HostName,
 						Rrtype: dns.TypeAAAA,
 						Class:  dns.ClassINET,
-						Ttl:    m.TTL,
+						Ttl:    atomic.LoadUint32(&m.TTL),
 					},
 					AAAA: ip16,
 				})
@@ -270,7 +271,7 @@ func (m *MDNSService) instanceRecords(q dns.Question) []dns.RR {
 				Name:   q.Name,
 				Rrtype: dns.TypeSRV,
 				Class:  dns.ClassINET,
-				Ttl:    m.TTL,
+				Ttl:    atomic.LoadUint32(&m.TTL),
 			},
 			Priority: 10,
 			Weight:   1,
@@ -298,7 +299,7 @@ func (m *MDNSService) instanceRecords(q dns.Question) []dns.RR {
 				Name:   q.Name,
 				Rrtype: dns.TypeTXT,
 				Class:  dns.ClassINET,
-				Ttl:    m.TTL,
+				Ttl:    atomic.LoadUint32(&m.TTL),
 			},
 			Txt: m.TXT,
 		}

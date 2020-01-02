@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/miekg/dns"
@@ -444,7 +445,7 @@ func (s *Server) unregister() error {
 		return nil
 	}
 
-	sd.TTL = 0
+	atomic.StoreUint32(&sd.TTL, 0)
 	name := fmt.Sprintf("%s.%s.%s.", sd.Instance, trimDot(sd.Service), trimDot(sd.Domain))
 
 	q := new(dns.Msg)
