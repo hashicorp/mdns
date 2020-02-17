@@ -31,7 +31,7 @@ type ServiceEntry struct {
 
 // complete is used to check if we have all the info we need
 func (s *ServiceEntry) complete() bool {
-	return (s.AddrV4 != nil || s.AddrV6 != nil || s.Addr != nil) && s.Port != 0 && s.hasTXT
+	return (s.AddrV4 != nil || s.AddrV6 != nil || s.Addr != nil)
 }
 
 // QueryParam is used to customize how a Lookup is performed
