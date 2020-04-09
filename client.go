@@ -24,6 +24,7 @@ type ServiceEntry struct {
 	Info       string
 	InfoFields []string
 	TTL        int
+	Type       uint16
 
 	Addr net.IP // @Deprecated
 
@@ -40,6 +41,7 @@ func (s *ServiceEntry) complete() bool {
 type QueryParam struct {
 	Service             string               // Service to lookup
 	Domain              string               // Lookup domain, default "local"
+	Type                uint16               // Lookup type, defaults to dns.TypePTR
 	Context             context.Context      // Context
 	Timeout             time.Duration        // Lookup timeout, default 1 second. Ignored if Context is provided
 	Interface           *net.Interface       // Multicast interface to use
@@ -319,7 +321,11 @@ func (c *client) query(params *QueryParam) error {
 
 	// Send the query
 	m := new(dns.Msg)
-	m.SetQuestion(serviceAddr, dns.TypePTR)
+	if params.Type == dns.TypeNone {
+		m.SetQuestion(serviceAddr, dns.TypePTR)
+	} else {
+		m.SetQuestion(serviceAddr, params.Type)
+	}
 	// RFC 6762, section 18.12.  Repurposing of Top Bit of qclass in Question
 	// Section
 	//
@@ -359,7 +365,7 @@ func (c *client) query(params *QueryParam) error {
 			} else {
 				// Fire off a node specific query
 				m := new(dns.Msg)
-				m.SetQuestion(inp.Name, dns.TypePTR)
+				m.SetQuestion(inp.Name, inp.Type)
 				m.RecursionDesired = false
 				if err := c.sendQuery(m); err != nil {
 					log.Printf("[ERR] mdns: Failed to query instance %s: %v", inp.Name, err)
@@ -416,20 +422,21 @@ func (c *client) recv(l *net.UDPConn, msgCh chan *dns.Msg) {
 }
 
 // ensureName is used to ensure the named node is in progress
-func ensureName(inprogress map[string]*ServiceEntry, name string) *ServiceEntry {
+func ensureName(inprogress map[string]*ServiceEntry, name string, typ uint16) *ServiceEntry {
 	if inp, ok := inprogress[name]; ok {
 		return inp
 	}
 	inp := &ServiceEntry{
 		Name: name,
+		Type: typ,
 	}
 	inprogress[name] = inp
 	return inp
 }
 
 // alias is used to setup an alias between two entries
-func alias(inprogress map[string]*ServiceEntry, src, dst string) {
-	srcEntry := ensureName(inprogress, src)
+func alias(inprogress map[string]*ServiceEntry, src, dst string, typ uint16) {
+	srcEntry := ensureName(inprogress, src, typ)
 	inprogress[dst] = srcEntry
 }
 
@@ -441,18 +448,18 @@ func messageToEntry(m *dns.Msg, inprogress map[string]*ServiceEntry) *ServiceEnt
 		switch rr := answer.(type) {
 		case *dns.PTR:
 			// Create new entry for this
-			inp = ensureName(inprogress, rr.Ptr)
+			inp = ensureName(inprogress, rr.Ptr, rr.Hdr.Rrtype)
 			if inp.complete() {
 				continue
 			}
 		case *dns.SRV:
 			// Check for a target mismatch
 			if rr.Target != rr.Hdr.Name {
-				alias(inprogress, rr.Hdr.Name, rr.Target)
+				alias(inprogress, rr.Hdr.Name, rr.Target, rr.Hdr.Rrtype)
 			}
 
 			// Get the port
-			inp = ensureName(inprogress, rr.Hdr.Name)
+			inp = ensureName(inprogress, rr.Hdr.Name, rr.Hdr.Rrtype)
 			if inp.complete() {
 				continue
 			}
@@ -460,7 +467,7 @@ func messageToEntry(m *dns.Msg, inprogress map[string]*ServiceEntry) *ServiceEnt
 			inp.Port = int(rr.Port)
 		case *dns.TXT:
 			// Pull out the txt
-			inp = ensureName(inprogress, rr.Hdr.Name)
+			inp = ensureName(inprogress, rr.Hdr.Name, rr.Hdr.Rrtype)
 			if inp.complete() {
 				continue
 			}
@@ -469,7 +476,7 @@ func messageToEntry(m *dns.Msg, inprogress map[string]*ServiceEntry) *ServiceEnt
 			inp.hasTXT = true
 		case *dns.A:
 			// Pull out the IP
-			inp = ensureName(inprogress, rr.Hdr.Name)
+			inp = ensureName(inprogress, rr.Hdr.Name, rr.Hdr.Rrtype)
 			if inp.complete() {
 				continue
 			}
@@ -477,7 +484,7 @@ func messageToEntry(m *dns.Msg, inprogress map[string]*ServiceEntry) *ServiceEnt
 			inp.AddrV4 = rr.A
 		case *dns.AAAA:
 			// Pull out the IP
-			inp = ensureName(inprogress, rr.Hdr.Name)
+			inp = ensureName(inprogress, rr.Hdr.Name, rr.Hdr.Rrtype)
 			if inp.complete() {
 				continue
 			}
