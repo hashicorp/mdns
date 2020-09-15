@@ -10,7 +10,7 @@ environment. However it works well in most office, home, or private infrastructu
 environments.
 
 Using the library is very simple, here is an example of publishing a service entry:
-
+```go
     // Setup our service export
     host, _ := os.Hostname()
     info := []string{"My awesome service"}
@@ -19,10 +19,10 @@ Using the library is very simple, here is an example of publishing a service ent
     // Create the mDNS server, defer shutdown
     server, _ := mdns.NewServer(&mdns.Config{Zone: service})
     defer server.Shutdown()
-
+```
 
 Doing a lookup for service providers is also very simple:
-
+```go
     // Make a channel for results and start listening
     entriesCh := make(chan *mdns.ServiceEntry, 4)
     go func() {
@@ -34,4 +34,4 @@ Doing a lookup for service providers is also very simple:
     // Start the lookup
     mdns.Lookup("_foobar._tcp", entriesCh)
     close(entriesCh)
-
+```
