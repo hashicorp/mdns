@@ -17,7 +17,7 @@ Using the library is very simple, here is an example of publishing a service ent
     service, _ := mdns.NewMDNSService(host, "_foobar._tcp", "", "", 8000, nil, info)
 
     // Create the mDNS server, defer shutdown
-    server, _ := mdns.NewServer(&mdns.Config{Zone: service})
+    server, _ := mdns.NewServer(logger, &mdns.Config{Zone: service})
     defer server.Shutdown()
 
 
@@ -32,6 +32,6 @@ Doing a lookup for service providers is also very simple:
     }()
 
     // Start the lookup
-    mdns.Lookup("_foobar._tcp", entriesCh)
+    mdns.Lookup(logger, "_foobar._tcp", entriesCh)
     close(entriesCh)
 

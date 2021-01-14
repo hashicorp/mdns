@@ -2,10 +2,12 @@ package mdns
 
 import (
 	"fmt"
-	"log"
 	"net"
 	"strings"
 	"sync/atomic"
+
+	"github.com/go-kit/kit/log"
+	"github.com/go-kit/kit/log/level"
 
 	"github.com/miekg/dns"
 )
@@ -53,10 +55,12 @@ type Server struct {
 
 	shutdown   int32
 	shutdownCh chan struct{}
+
+	log log.Logger
 }
 
 // NewServer is used to create a new mDNS server from a config
-func NewServer(config *Config) (*Server, error) {
+func NewServer(log log.Logger, config *Config) (*Server, error) {
 	// Create the listeners
 	ipv4List, _ := net.ListenMulticastUDP("udp4", config.Iface, ipv4Addr)
 	ipv6List, _ := net.ListenMulticastUDP("udp6", config.Iface, ipv6Addr)
@@ -71,6 +75,7 @@ func NewServer(config *Config) (*Server, error) {
 		ipv4List:   ipv4List,
 		ipv6List:   ipv6List,
 		shutdownCh: make(chan struct{}),
+		log:        log,
 	}
 
 	if ipv4List != nil {
@@ -115,7 +120,7 @@ func (s *Server) recv(c *net.UDPConn) {
 			continue
 		}
 		if err := s.parsePacket(buf[:n], from); err != nil {
-			log.Printf("[ERR] mdns: Failed to handle query: %v", err)
+			level.Error(s.log).Log("msg", "handle query", "err", err)
 		}
 	}
 }
@@ -124,7 +129,7 @@ func (s *Server) recv(c *net.UDPConn) {
 func (s *Server) parsePacket(packet []byte, from net.Addr) error {
 	var msg dns.Msg
 	if err := msg.Unpack(packet); err != nil {
-		log.Printf("[ERR] mdns: Failed to unpack packet: %v", err)
+		level.Error(s.log).Log("msg", "unpack packet", "err", err)
 		return err
 	}
 	return s.handleQuery(&msg, from)
@@ -223,7 +228,7 @@ func (s *Server) handleQuery(query *dns.Msg, from net.Addr) error {
 		for i, q := range query.Question {
 			questions[i] = q.Name
 		}
-		log.Printf("no responses for query with questions: %s", strings.Join(questions, ", "))
+		level.Info(s.log).Log("msg", "no responses for query", "question", strings.Join(questions, ", "))
 	}
 
 	if mresp := resp(false); mresp != nil {
