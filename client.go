@@ -133,6 +133,11 @@ func newClient() (*client, error) {
 		log.Printf("[ERR] mdns: Failed to bind to udp6 port: %v", err)
 	}
 
+	if uconn6 == nil || mconn6 == nil {
+		uconn6 = nil
+		mconn6 = nil
+	}
+
 	if mconn4 == nil && mconn6 == nil {
 		return nil, fmt.Errorf("failed to bind to any multicast udp port")
 	}
