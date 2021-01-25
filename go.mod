@@ -1,4 +1,4 @@
-module github.com/hashicorp/mdns
+module github.com/tonybase/mdns
 
 require (
 	github.com/miekg/dns v1.1.27
