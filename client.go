@@ -42,6 +42,12 @@ type QueryParam struct {
 	Interface           *net.Interface       // Multicast interface to use
 	Entries             chan<- *ServiceEntry // Entries Channel
 	WantUnicastResponse bool                 // Unicast response desired, as per 5.4 in RFC
+
+	// Whether to set the IP_MULTICAST_LOOP socket option on the multicast sockets
+	// opened.  Setting this to false allows mDNS services on the same machine to
+	// receive the query packets. See
+	// http://stackoverflow.com/questions/1719156/is-there-a-way-to-test-multicast-ip-on-same-box
+	DisableMulticastLoopback bool
 }
 
 // DefaultParams is used to return a default set of QueryParam's
@@ -72,6 +78,11 @@ func Query(params *QueryParam) error {
 		if err := client.setInterface(params.Interface); err != nil {
 			return err
 		}
+	}
+	// Set the IP_MULTICAST_LOOP socket option of the multicast connections
+	// appropriately.
+	if err := client.setLoopback(!params.DisableMulticastLoopback); err != nil {
+		return err
 	}
 
 	// Ensure defaults are set
@@ -190,6 +201,28 @@ func (c *client) setInterface(iface *net.Interface) error {
 	}
 	p2 = ipv6.NewPacketConn(c.ipv6MulticastConn)
 	if err := p2.SetMulticastInterface(iface); err != nil {
+		return err
+	}
+	return nil
+}
+
+// setLoopback sets the multicst loopback socket option of all the UDP
+// connections used by the client for sending multicast queries.
+func (c *client) setLoopback(enabled bool) error {
+	p := ipv4.NewPacketConn(c.ipv4UnicastConn)
+	if err := p.SetMulticastLoopback(enabled); err != nil {
+		return err
+	}
+	p2 := ipv6.NewPacketConn(c.ipv6UnicastConn)
+	if err := p2.SetMulticastLoopback(enabled); err != nil {
+		return err
+	}
+	p = ipv4.NewPacketConn(c.ipv4MulticastConn)
+	if err := p.SetMulticastLoopback(enabled); err != nil {
+		return err
+	}
+	p2 = ipv6.NewPacketConn(c.ipv6MulticastConn)
+	if err := p2.SetMulticastLoopback(enabled); err != nil {
 		return err
 	}
 	return nil
