@@ -269,6 +269,7 @@ func (s *Server) handleQuestion(q dns.Question) (multicastRecs, unicastRecs []dn
 
 // sendResponse is used to send a response packet
 func (s *Server) sendResponse(resp *dns.Msg, from net.Addr, unicast bool) error {
+	log.Printf("resp (iface=%s, unicast=%+v, from: %s): %+v\n", s.config.Iface.Name, unicast, from.String(), resp )
 	buf, err := resp.Pack()
 	if err != nil {
 		return err
