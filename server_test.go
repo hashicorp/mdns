@@ -1,7 +1,7 @@
 package mdns
 
 import (
-	"sync/atomic"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -23,37 +23,43 @@ func TestServer_Lookup(t *testing.T) {
 	defer serv.Shutdown()
 
 	entries := make(chan *ServiceEntry, 1)
-	var found int32 = 0
+	errCh := make(chan error, 1)
+	defer close(errCh)
 	go func() {
 		select {
 		case e := <-entries:
 			if e.Name != "hostname._foobar._tcp.local." {
-				t.Fatalf("bad: %v", e)
+				errCh <- fmt.Errorf("Entry has the wrong name: %+v", e)
+				return
 			}
 			if e.Port != 80 {
-				t.Fatalf("bad: %v", e)
+				errCh <- fmt.Errorf("Entry has the wrong port: %+v", e)
+				return
 			}
 			if e.Info != "Local web server" {
-				t.Fatalf("bad: %v", e)
+				errCh <- fmt.Errorf("Entry as the wrong Info: %+v", e)
+				return
 			}
-			atomic.StoreInt32(&found, 1)
-
+			errCh <- nil
 		case <-time.After(80 * time.Millisecond):
-			t.Fatalf("timeout")
+			errCh <- fmt.Errorf("Timed out waiting for response")
 		}
 	}()
 
 	params := &QueryParam{
-		Service: "_foobar._tcp",
-		Domain:  "local",
-		Timeout: 50 * time.Millisecond,
-		Entries: entries,
+		Service:     "_foobar._tcp",
+		Domain:      "local",
+		Timeout:     50 * time.Millisecond,
+		Entries:     entries,
+		DisableIPv6: true,
 	}
 	err = Query(params)
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	if atomic.LoadInt32(&found) == 0 {
-		t.Fatalf("record not found")
+
+	err = <-errCh
+	if err != nil {
+		t.Fatalf("err: %v", err)
 	}
 }
