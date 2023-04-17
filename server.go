@@ -66,7 +66,7 @@ func NewServer(config *Config) (*Server, error) {
 
 	// Check if we have any listener
 	if ipv4List == nil && ipv6List == nil {
-		return nil, fmt.Errorf("No multicast listeners could be started")
+		return nil, fmt.Errorf("no multicast listeners could be started")
 	}
 
 	s := &Server{

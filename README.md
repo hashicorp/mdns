@@ -1,5 +1,5 @@
-mdns
-====
+# mdns
+[![Build Status](https://github.com/hashicorp/mdns/workflows/ci/badge.svg)](https://github.com/hashicorp/mdns/actions)
 
 Simple mDNS client/server library in Golang. mDNS or Multicast DNS can be
 used to discover services on the local network without the use of an authoritative
@@ -10,28 +10,28 @@ environment. However it works well in most office, home, or private infrastructu
 environments.
 
 Using the library is very simple, here is an example of publishing a service entry:
+```go
+// Setup our service export
+host, _ := os.Hostname()
+info := []string{"My awesome service"}
+service, _ := mdns.NewMDNSService(host, "_foobar._tcp", "", "", 8000, nil, info)
 
-    // Setup our service export
-    host, _ := os.Hostname()
-    info := []string{"My awesome service"}
-    service, _ := mdns.NewMDNSService(host, "_foobar._tcp", "", "", 8000, nil, info)
-
-    // Create the mDNS server, defer shutdown
-    server, _ := mdns.NewServer(&mdns.Config{Zone: service})
-    defer server.Shutdown()
-
+// Create the mDNS server, defer shutdown
+server, _ := mdns.NewServer(&mdns.Config{Zone: service})
+defer server.Shutdown()
+```
 
 Doing a lookup for service providers is also very simple:
+```go
+// Make a channel for results and start listening
+entriesCh := make(chan *mdns.ServiceEntry, 4)
+go func() {
+    for entry := range entriesCh {
+        fmt.Printf("Got new entry: %v\n", entry)
+    }
+}()
 
-    // Make a channel for results and start listening
-    entriesCh := make(chan *mdns.ServiceEntry, 4)
-    go func() {
-        for entry := range entriesCh {
-            fmt.Printf("Got new entry: %v\n", entry)
-        }
-    }()
-
-    // Start the lookup
-    mdns.Lookup("_foobar._tcp", entriesCh)
-    close(entriesCh)
-
+// Start the lookup
+mdns.Lookup("_foobar._tcp", entriesCh)
+close(entriesCh)
+```

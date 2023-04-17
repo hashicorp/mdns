@@ -15,7 +15,10 @@ func TestServer_StartStop(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	defer serv.Shutdown()
+
+	if err := serv.Shutdown(); err != nil {
+		t.Fatalf("err: %v", err)
+	}
 }
 
 func TestServer_Lookup(t *testing.T) {
@@ -23,7 +26,11 @@ func TestServer_Lookup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("err: %v", err)
 	}
-	defer serv.Shutdown()
+	defer func() {
+		if err := serv.Shutdown(); err != nil {
+			t.Fatalf("err: %v", err)
+		}
+	}()
 
 	entries := make(chan *ServiceEntry, 1)
 	errCh := make(chan error, 1)
