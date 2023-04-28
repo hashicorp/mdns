@@ -1,3 +1,1 @@
-* @hashicorp/consul-core-reviewers
-
-/.github/workflows/ci.yml            @hashicorp/release-engineering
+* @hashicorp/consul-core
