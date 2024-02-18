@@ -18,13 +18,14 @@ import (
 
 // ServiceEntry is returned after we query for a service
 type ServiceEntry struct {
-	Name       string
-	Host       string
-	AddrV4     net.IP
-	AddrV6     net.IP
-	Port       int
-	Info       string
-	InfoFields []string
+	Name         string
+	Host         string
+	AddrV4       net.IP
+	AddrV6       net.IP // @Deprecated
+	AddrV6IPAddr *net.IPAddr
+	Port         int
+	Info         string
+	InfoFields   []string
 
 	Addr net.IP // @Deprecated
 
@@ -230,13 +231,19 @@ func (c *client) setInterface(iface *net.Interface) error {
 	return nil
 }
 
+// msgAddr carries the message and source address from recv to message processing.
+type msgAddr struct {
+	msg *dns.Msg
+	src *net.UDPAddr
+}
+
 // query is used to perform a lookup and stream results
 func (c *client) query(params *QueryParam) error {
 	// Create the service name
 	serviceAddr := fmt.Sprintf("%s.%s.", trimDot(params.Service), trimDot(params.Domain))
 
 	// Start listening for response packets
-	msgCh := make(chan *dns.Msg, 32)
+	msgCh := make(chan *msgAddr, 32)
 	if c.use_ipv4 {
 		go c.recv(c.ipv4UnicastConn, msgCh)
 		go c.recv(c.ipv4MulticastConn, msgCh)
@@ -272,7 +279,7 @@ func (c *client) query(params *QueryParam) error {
 		select {
 		case resp := <-msgCh:
 			var inp *ServiceEntry
-			for _, answer := range append(resp.Answer, resp.Extra...) {
+			for _, answer := range append(resp.msg.Answer, resp.msg.Extra...) {
 				// TODO(reddaly): Check that response corresponds to serviceAddr?
 				switch rr := answer.(type) {
 				case *dns.PTR:
@@ -306,8 +313,16 @@ func (c *client) query(params *QueryParam) error {
 				case *dns.AAAA:
 					// Pull out the IP
 					inp = ensureName(inprogress, rr.Hdr.Name)
-					inp.Addr = rr.AAAA // @Deprecated
-					inp.AddrV6 = rr.AAAA
+					inp.Addr = rr.AAAA   // @Deprecated
+					inp.AddrV6 = rr.AAAA // @Deprecated
+					inp.AddrV6IPAddr = &net.IPAddr{IP: rr.AAAA}
+					// link-local IPv6 addresses must be qualified with a zone (interface). Zone is
+					// specific to this machine/network-namespace and so won't be carried in the
+					// mDNS message itself. We borrow the zone from the source address of the UDP
+					// packet, as the link-local address should be valid on that interface.
+					if rr.AAAA.IsLinkLocalUnicast() || rr.AAAA.IsLinkLocalMulticast() {
+						inp.AddrV6IPAddr.Zone = resp.src.Zone
+					}
 				}
 			}
 
@@ -362,13 +377,13 @@ func (c *client) sendQuery(q *dns.Msg) error {
 }
 
 // recv is used to receive until we get a shutdown
-func (c *client) recv(l *net.UDPConn, msgCh chan *dns.Msg) {
+func (c *client) recv(l *net.UDPConn, msgCh chan *msgAddr) {
 	if l == nil {
 		return
 	}
 	buf := make([]byte, 65536)
 	for atomic.LoadInt32(&c.closed) == 0 {
-		n, err := l.Read(buf)
+		n, addr, err := l.ReadFromUDP(buf)
 
 		if atomic.LoadInt32(&c.closed) == 1 {
 			return
@@ -384,7 +399,10 @@ func (c *client) recv(l *net.UDPConn, msgCh chan *dns.Msg) {
 			continue
 		}
 		select {
-		case msgCh <- msg:
+		case msgCh <- &msgAddr{
+			msg: msg,
+			src: addr,
+		}:
 		case <-c.closedCh:
 			return
 		}
