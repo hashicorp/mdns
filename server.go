@@ -44,6 +44,9 @@ type Config struct {
 	// LogEmptyResponses indicates the server should print an informative message
 	// when there is an mDNS query for which the server has no response.
 	LogEmptyResponses bool
+
+	// Logger can optionally be set to use an alternative logger instead of the default.
+	Logger *log.Logger
 }
 
 // mDNS server is used to listen for mDNS queries and respond if we
@@ -67,6 +70,10 @@ func NewServer(config *Config) (*Server, error) {
 	// Check if we have any listener
 	if ipv4List == nil && ipv6List == nil {
 		return nil, fmt.Errorf("no multicast listeners could be started")
+	}
+
+	if config.Logger == nil {
+		config.Logger = log.Default()
 	}
 
 	s := &Server{
@@ -118,7 +125,7 @@ func (s *Server) recv(c *net.UDPConn) {
 			continue
 		}
 		if err := s.parsePacket(buf[:n], from); err != nil {
-			log.Printf("[ERR] mdns: Failed to handle query: %v", err)
+			s.config.Logger.Printf("[ERR] mdns: Failed to handle query: %v", err)
 		}
 	}
 }
@@ -127,7 +134,7 @@ func (s *Server) recv(c *net.UDPConn) {
 func (s *Server) parsePacket(packet []byte, from net.Addr) error {
 	var msg dns.Msg
 	if err := msg.Unpack(packet); err != nil {
-		log.Printf("[ERR] mdns: Failed to unpack packet: %v", err)
+		s.config.Logger.Printf("[ERR] mdns: Failed to unpack packet: %v", err)
 		return err
 	}
 	return s.handleQuery(&msg, from)
@@ -226,7 +233,7 @@ func (s *Server) handleQuery(query *dns.Msg, from net.Addr) error {
 		for i, q := range query.Question {
 			questions[i] = q.Name
 		}
-		log.Printf("no responses for query with questions: %s", strings.Join(questions, ", "))
+		s.config.Logger.Printf("no responses for query with questions: %s", strings.Join(questions, ", "))
 	}
 
 	if mresp := resp(false); mresp != nil {
