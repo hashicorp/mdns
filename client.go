@@ -208,23 +208,31 @@ func (c *client) Close() error {
 // default if not provided
 func (c *client) setInterface(iface *net.Interface) error {
 	if c.use_ipv4 {
-		p := ipv4.NewPacketConn(c.ipv4UnicastConn)
-		if err := p.SetMulticastInterface(iface); err != nil {
-			return err
+		if c.ipv4UnicastConn != nil {
+			p := ipv4.NewPacketConn(c.ipv4UnicastConn)
+			if err := p.SetMulticastInterface(iface); err != nil {
+				return err
+			}
 		}
-		p = ipv4.NewPacketConn(c.ipv4MulticastConn)
-		if err := p.SetMulticastInterface(iface); err != nil {
-			return err
+		if c.ipv4MulticastConn != nil {
+			p := ipv4.NewPacketConn(c.ipv4MulticastConn)
+			if err := p.SetMulticastInterface(iface); err != nil {
+				return err
+			}
 		}
 	}
 	if c.use_ipv6 {
-		p2 := ipv6.NewPacketConn(c.ipv6UnicastConn)
-		if err := p2.SetMulticastInterface(iface); err != nil {
-			return err
+		if c.ipv6UnicastConn != nil {
+			p2 := ipv6.NewPacketConn(c.ipv6UnicastConn)
+			if err := p2.SetMulticastInterface(iface); err != nil {
+				return err
+			}
 		}
-		p2 = ipv6.NewPacketConn(c.ipv6MulticastConn)
-		if err := p2.SetMulticastInterface(iface); err != nil {
-			return err
+		if c.ipv6MulticastConn != nil {
+			p2 := ipv6.NewPacketConn(c.ipv6MulticastConn)
+			if err := p2.SetMulticastInterface(iface); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
