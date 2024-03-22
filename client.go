@@ -182,6 +182,11 @@ func newClient(v4 bool, v6 bool) (*client, error) {
 		}
 	}
 
+	if uconn6 == nil || mconn6 == nil {
+		uconn6 = nil
+		mconn6 = nil
+	}
+
 	if mconn4 == nil && mconn6 == nil {
 		return nil, fmt.Errorf("failed to bind to any multicast udp port")
 	}
