@@ -49,7 +49,7 @@ type QueryParam struct {
 	WantUnicastResponse bool                 // Unicast response desired, as per 5.4 in RFC
 	DisableIPv4         bool                 // Whether to disable usage of IPv4 for MDNS operations. Does not affect discovered addresses.
 	DisableIPv6         bool                 // Whether to disable usage of IPv6 for MDNS operations. Does not affect discovered addresses.
-	Log                 *log.Logger          // Optionally provide a *log.Logger to better manage log output.
+	Logger              *log.Logger          // Optionally provide a *log.Logger to better manage log output.
 }
 
 // DefaultParams is used to return a default set of QueryParam's
@@ -79,11 +79,11 @@ func Query(params *QueryParam) error {
 // either read or buffer. QueryContext will attempt to stop the query
 // on cancellation.
 func QueryContext(ctx context.Context, params *QueryParam) error {
-  if params.Log == nil {
-		params.Log = log.Default()
+	if params.Logger == nil {
+		params.Logger = log.Default()
 	}
 	// Create a new client
-	client, err := newClient(!params.DisableIPv4, !params.DisableIPv6, params.Log)
+	client, err := newClient(!params.DisableIPv4, !params.DisableIPv6, params.Logger)
 	if err != nil {
 		return err
 	}
