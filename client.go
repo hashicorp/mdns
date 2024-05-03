@@ -188,13 +188,13 @@ func newClient(v4 bool, v6 bool) (*client, error) {
 	// Check that unicast and multicast connections have been made for IPv4 and IPv6
 	// and disable the respective protocol if not.
 	if uconn4 == nil || mconn4 == nil {
-		log.Printf("[ERR] mdns: Failed to listen to both unicast and multicast on IPv4")
+		logger.Printf("[INFO] mdns: Failed to listen to both unicast and multicast on IPv4")
 		uconn4 = nil
 		mconn4 = nil
 		v4 = false
 	}
 	if uconn6 == nil || mconn6 == nil {
-		log.Printf("[ERR] mdns: Failed to listen to both unicast and multicast on IPv6")
+		logger.Printf("[INFO] mdns: Failed to listen to both unicast and multicast on IPv6")
 		uconn6 = nil
 		mconn6 = nil
 		v6 = false
