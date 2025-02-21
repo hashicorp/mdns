@@ -1,9 +1,11 @@
 name: ci
 
-on: 
+on:
+  pull_request:
+    branches: ["main"]
   push:
-    branches: [build-test]
-
+    branches: ["main"]
+    tags: ["*"]
 
 permissions:
   contents: read
@@ -30,3 +32,7 @@ jobs:
       with:
          path: coverage.out
          name: Coverage-report
+    - name: Display Coverage Report 
+      run: go tool cover -func=coverage.out
+    - name: Build Go
+      run: go build ./...
