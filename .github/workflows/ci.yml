@@ -1,11 +1,9 @@
 name: ci
 
-on:
-  pull_request:
-    branches: ["main"]
+on: 
   push:
-    branches: ["main"]
-    tags: ["*"]
+    branches: [build-test]
+
 
 permissions:
   contents: read
@@ -25,5 +23,10 @@ jobs:
         version: latest
         skip-cache: true
 
-    - name: Run Go tests
-      run: go test -v -race ./...
+    - name: Run Go tests and generate coverage report
+      run: go test -v -race ./... -coverprofile=coverage.out
+    - name: Upload the coverage report
+      uses: actions/upload-artifact@65462800fd760344b1a7b4382951275a0abb4808
+      with:
+         path: coverage.out
+         name: Coverage-report
