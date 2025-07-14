@@ -4,6 +4,7 @@
 package mdns
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -380,7 +381,7 @@ func (c *client) query(params *QueryParam) error {
 				}
 				inp.sent = true
 				select {
-				case params.Entries <- inp:
+				case params.Entries <- deepCopyServiceEntry(inp):
 				default:
 				}
 			} else {
@@ -395,6 +396,37 @@ func (c *client) query(params *QueryParam) error {
 		case <-finish:
 			return nil
 		}
+	}
+}
+
+// deepCopyServiceEntry returns a deep copy of the given [ServiceEntry]. Since
+// we send pointers back to callers via [QueryParam.Entries], they need to be
+// copied so that neither of us are mutating/reading from the same pointer at
+// the same time.
+func deepCopyServiceEntry(se *ServiceEntry) *ServiceEntry {
+	info := make([]string, len(se.InfoFields))
+	copy(info, se.InfoFields)
+
+	var ipAddrV6 *net.IPAddr
+	if se.AddrV6IPAddr != nil {
+		ipAddrV6 = &net.IPAddr{
+			IP:   bytes.Clone(se.AddrV6IPAddr.IP),
+			Zone: se.AddrV6IPAddr.Zone,
+		}
+	}
+
+	return &ServiceEntry{
+		hasTXT:       se.hasTXT,
+		sent:         se.sent,
+		Name:         se.Name,
+		Host:         se.Host,
+		AddrV4:       bytes.Clone(se.AddrV4),
+		AddrV6:       bytes.Clone(se.AddrV6),
+		Addr:         bytes.Clone(se.Addr),
+		Port:         se.Port,
+		Info:         se.Info,
+		AddrV6IPAddr: ipAddrV6,
+		InfoFields:   info,
 	}
 }
 
