@@ -30,8 +30,9 @@ type ServiceEntry struct {
 
 	Addr net.IP // @Deprecated
 
-	hasTXT bool
-	sent   bool
+	hasTXT      bool
+	sent        bool
+	nodeQueried bool
 }
 
 // complete is used to check if we have all the info we need
@@ -373,23 +374,31 @@ func (c *client) query(params *QueryParam) error {
 				continue
 			}
 
-			// Check if this entry is complete
-			if inp.complete() {
-				if inp.sent {
-					continue
-				}
-				inp.sent = true
-				select {
-				case params.Entries <- inp:
-				default:
-				}
-			} else {
-				// Fire off a node specific query
-				m := new(dns.Msg)
-				m.SetQuestion(inp.Name, dns.TypePTR)
-				m.RecursionDesired = false
-				if err := c.sendQuery(m); err != nil {
-					c.log.Printf("[ERR] mdns: Failed to query instance %s: %v", inp.Name, err)
+			// Check all new queries
+			for _, inp := range inprogress {
+				// Check if this entry is complete
+				if inp.complete() {
+					inp.nodeQueried = true
+					if inp.sent {
+						continue
+					}
+					inp.sent = true
+					select {
+					case params.Entries <- inp:
+					default:
+					}
+				} else {
+					if inp.nodeQueried {
+						continue
+					}
+					// Fire off a node specific query
+					inp.nodeQueried = true
+					m := new(dns.Msg)
+					m.SetQuestion(inp.Name, dns.TypePTR)
+					m.RecursionDesired = false
+					if err := c.sendQuery(m); err != nil {
+						c.log.Printf("[ERR] mdns: Failed to query instance %s: %v", inp.Name, err)
+					}
 				}
 			}
 		case <-finish:
