@@ -83,7 +83,11 @@ func QueryContext(ctx context.Context, params *QueryParam) error {
 		params.Logger = log.Default()
 	}
 	// Create a new client
-	client, err := newClient(!params.DisableIPv4, !params.DisableIPv6, params.Logger)
+	// Pass params.Interface so the multicast receive socket joins the correct
+	// interface. On Windows with multiple NICs, using nil here causes
+	// IP_ADD_MEMBERSHIP with INADDR_ANY, which joins the wrong interface and
+	// results in zero packets received (see issue #80).
+	client, err := newClient(!params.DisableIPv4, !params.DisableIPv6, params.Logger, params.Interface)
 	if err != nil {
 		return err
 	}
@@ -143,8 +147,11 @@ type client struct {
 }
 
 // NewClient creates a new mdns Client that can be used to query
-// for records
-func newClient(v4 bool, v6 bool, logger *log.Logger) (*client, error) {
+// for records.
+// iface specifies the network interface to join the multicast group on.
+// A nil iface lets the OS choose (system default), which is correct for
+// single-NIC machines but unreliable on Windows with multiple NICs.
+func newClient(v4 bool, v6 bool, logger *log.Logger, iface *net.Interface) (*client, error) {
 	if !v4 && !v6 {
 		return nil, fmt.Errorf("Must enable at least one of IPv4 and IPv6 querying")
 	}
@@ -174,15 +181,18 @@ func newClient(v4 bool, v6 bool, logger *log.Logger) (*client, error) {
 		return nil, fmt.Errorf("failed to bind to any unicast udp port")
 	}
 
-	// Establish multicast connections
+	// Establish multicast connections.
+	// iface is passed explicitly so that IP_ADD_MEMBERSHIP is issued for the
+	// correct interface on multi-NIC Windows hosts. When iface is nil the
+	// behaviour is identical to before (OS picks based on routing table).
 	if v4 {
-		mconn4, err = net.ListenMulticastUDP("udp4", nil, ipv4Addr)
+		mconn4, err = net.ListenMulticastUDP("udp4", iface, ipv4Addr)
 		if err != nil {
 			logger.Printf("[ERR] mdns: Failed to bind to udp4 port: %v", err)
 		}
 	}
 	if v6 {
-		mconn6, err = net.ListenMulticastUDP("udp6", nil, ipv6Addr)
+		mconn6, err = net.ListenMulticastUDP("udp6", iface, ipv6Addr)
 		if err != nil {
 			logger.Printf("[ERR] mdns: Failed to bind to udp6 port: %v", err)
 		}
