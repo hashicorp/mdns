@@ -1,4 +1,4 @@
-// Copyright IBM Corp. 2014, 2025
+// Copyright (c) HashiCorp, Inc.
 // SPDX-License-Identifier: MIT
 
 package mdns
@@ -316,6 +316,12 @@ func (c *client) query(params *QueryParam) error {
 	// Map the in-progress responses
 	inprogress := make(map[string]*ServiceEntry)
 
+	// Track names that belong to the queried service. Only entries
+	// reachable from a matching PTR record are processed; this
+	// prevents unrelated mDNS responses on the network from
+	// polluting the results.
+	validNames := make(map[string]bool)
+
 	// Listen until we reach the timeout
 	finish := time.After(params.Timeout)
 	for {
@@ -323,13 +329,21 @@ func (c *client) query(params *QueryParam) error {
 		case resp := <-msgCh:
 			var inp *ServiceEntry
 			for _, answer := range append(resp.msg.Answer, resp.msg.Extra...) {
-				// TODO(reddaly): Check that response corresponds to serviceAddr?
 				switch rr := answer.(type) {
 				case *dns.PTR:
-					// Create new entry for this
+					// Only accept PTR records for the service we queried.
+					if !strings.EqualFold(rr.Hdr.Name, serviceAddr) {
+						continue
+					}
+					validNames[rr.Ptr] = true
 					inp = ensureName(inprogress, rr.Ptr)
 
 				case *dns.SRV:
+					if !validNames[rr.Hdr.Name] {
+						continue
+					}
+					// The SRV target (hostname) is also valid for A/AAAA lookups
+					validNames[rr.Target] = true
 					// Check for a target mismatch
 					if rr.Target != rr.Hdr.Name {
 						alias(inprogress, rr.Hdr.Name, rr.Target)
@@ -341,6 +355,9 @@ func (c *client) query(params *QueryParam) error {
 					inp.Port = int(rr.Port)
 
 				case *dns.TXT:
+					if !validNames[rr.Hdr.Name] {
+						continue
+					}
 					// Pull out the txt
 					inp = ensureName(inprogress, rr.Hdr.Name)
 					inp.Info = strings.Join(rr.Txt, "|")
@@ -348,12 +365,18 @@ func (c *client) query(params *QueryParam) error {
 					inp.hasTXT = true
 
 				case *dns.A:
+					if !validNames[rr.Hdr.Name] {
+						continue
+					}
 					// Pull out the IP
 					inp = ensureName(inprogress, rr.Hdr.Name)
 					inp.Addr = rr.A // @Deprecated
 					inp.AddrV4 = rr.A
 
 				case *dns.AAAA:
+					if !validNames[rr.Hdr.Name] {
+						continue
+					}
 					// Pull out the IP
 					inp = ensureName(inprogress, rr.Hdr.Name)
 					inp.Addr = rr.AAAA   // @Deprecated
