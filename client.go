@@ -404,19 +404,24 @@ func (c *client) sendQuery(q *dns.Msg) error {
 	if err != nil {
 		return err
 	}
+	// success = true if msg is sent successfully, either by ipv4 or ipv6
+	success := false
 	if c.ipv4UnicastConn != nil {
 		_, err = c.ipv4UnicastConn.WriteToUDP(buf, ipv4Addr)
-		if err != nil {
-			return err
+		if err == nil {
+			success = true
 		}
 	}
 	if c.ipv6UnicastConn != nil {
 		_, err = c.ipv6UnicastConn.WriteToUDP(buf, ipv6Addr)
-		if err != nil {
-			return err
+		if err == nil {
+			success = true
 		}
 	}
-	return nil
+	if success {
+		return nil
+	}
+	return err
 }
 
 // recv is used to receive until we get a shutdown
