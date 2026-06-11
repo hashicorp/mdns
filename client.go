@@ -146,7 +146,7 @@ type client struct {
 // for records
 func newClient(v4 bool, v6 bool, logger *log.Logger) (*client, error) {
 	if !v4 && !v6 {
-		return nil, fmt.Errorf("Must enable at least one of IPv4 and IPv6 querying")
+		return nil, fmt.Errorf("Must enable at least one of IPv4 and IPv6 querying") //nolint:staticcheck
 	}
 
 	// TODO(reddaly): At least attempt to bind to the port required in the spec.

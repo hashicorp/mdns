@@ -1,6 +1,6 @@
 module github.com/hashicorp/mdns
 
-go 1.24.0
+go 1.25
 
 require (
 	github.com/miekg/dns v1.1.72
