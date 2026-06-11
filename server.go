@@ -1,4 +1,4 @@
-// Copyright IBM Corp. 2014, 2025
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: MIT
 
 package mdns
@@ -57,7 +57,7 @@ type Server struct {
 	ipv4List *net.UDPConn
 	ipv6List *net.UDPConn
 
-	shutdown   int32
+	shutdown   atomic.Int32
 	shutdownCh chan struct{}
 }
 
@@ -96,7 +96,7 @@ func NewServer(config *Config) (*Server, error) {
 
 // Shutdown is used to shutdown the listener
 func (s *Server) Shutdown() error {
-	if !atomic.CompareAndSwapInt32(&s.shutdown, 0, 1) {
+	if !s.shutdown.CompareAndSwap(0, 1) {
 		// something else already closed us
 		return nil
 	}
@@ -118,7 +118,7 @@ func (s *Server) recv(c *net.UDPConn) {
 		return
 	}
 	buf := make([]byte, 65536)
-	for atomic.LoadInt32(&s.shutdown) == 0 {
+	for s.shutdown.Load() == 0 {
 		n, from, err := c.ReadFrom(buf)
 
 		if err != nil {

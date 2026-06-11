@@ -1,4 +1,4 @@
-// Copyright IBM Corp. 2014, 2025
+// Copyright IBM Corp. 2014, 2026
 // SPDX-License-Identifier: MIT
 
 package mdns
@@ -136,7 +136,7 @@ type client struct {
 	ipv4MulticastConn *net.UDPConn
 	ipv6MulticastConn *net.UDPConn
 
-	closed   int32
+	closed   atomic.Int32
 	closedCh chan struct{} // TODO(reddaly): This doesn't appear to be used.
 
 	log *log.Logger
@@ -224,12 +224,11 @@ func newClient(v4 bool, v6 bool, logger *log.Logger) (*client, error) {
 
 // Close is used to cleanup the client
 func (c *client) Close() error {
-	if !atomic.CompareAndSwapInt32(&c.closed, 0, 1) {
+	if !c.closed.CompareAndSwap(0, 1) {
 		// something else already closed it
 		return nil
 	}
 
-	c.log.Printf("[INFO] mdns: Closing client %v", *c)
 	close(c.closedCh)
 
 	if c.ipv4UnicastConn != nil {
@@ -425,10 +424,10 @@ func (c *client) recv(l *net.UDPConn, msgCh chan *msgAddr) {
 		return
 	}
 	buf := make([]byte, 65536)
-	for atomic.LoadInt32(&c.closed) == 0 {
+	for c.closed.Load() == 0 {
 		n, addr, err := l.ReadFromUDP(buf)
 
-		if atomic.LoadInt32(&c.closed) == 1 {
+		if c.closed.Load() == 1 {
 			return
 		}
 
