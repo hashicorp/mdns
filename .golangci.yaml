@@ -1,0 +1,17 @@
+# Copyright IBM Corp. 2014, 2025
+# SPDX-License-Identifier: MIT
+
+version: "2"
+linters:
+  disable:
+    # TODO
+    - errcheck
+  enable:
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+
+    # TODO:
+    # - modernize
+    # - errcheck
