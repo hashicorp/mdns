@@ -1,17 +1,20 @@
-# Copyright IBM Corp. 2014, 2025
+# Copyright IBM Corp. 2014, 2026
 # SPDX-License-Identifier: MIT
 
 version: "2"
 linters:
-  disable:
-    # TODO
-    - errcheck
   enable:
+    - errcheck
     - govet
     - ineffassign
+    - modernize
     - staticcheck
     - unused
 
-    # TODO:
-    # - modernize
-    # - errcheck
+  settings:
+    errcheck:
+      disable-default-exclusions: false
+      verbose: true
+      exclude-functions:
+        - "(*net.conn).Close"
+        - "(*github.com/hashicorp/mdns.client).Close"
