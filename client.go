@@ -463,8 +463,22 @@ func ensureName(inprogress map[string]*ServiceEntry, name string) *ServiceEntry 
 	return inp
 }
 
-// alias is used to setup an alias between two entries
+// alias is used to setup an alias between two entries.
+// When the destination already has an entry (e.g. an A record arrived
+// before the SRV record), merge its address information into the source
+// entry so that nothing is lost.
 func alias(inprogress map[string]*ServiceEntry, src, dst string) {
 	srcEntry := ensureName(inprogress, src)
+	if dstEntry, ok := inprogress[dst]; ok && dstEntry != srcEntry {
+		// Merge address info from the existing destination entry
+		if srcEntry.AddrV4 == nil && dstEntry.AddrV4 != nil {
+			srcEntry.Addr = dstEntry.Addr
+			srcEntry.AddrV4 = dstEntry.AddrV4
+		}
+		if srcEntry.AddrV6IPAddr == nil && dstEntry.AddrV6IPAddr != nil {
+			srcEntry.AddrV6 = dstEntry.AddrV6
+			srcEntry.AddrV6IPAddr = dstEntry.AddrV6IPAddr
+		}
+	}
 	inprogress[dst] = srcEntry
 }
