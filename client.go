@@ -397,25 +397,38 @@ func (c *client) query(params *QueryParam) error {
 	}
 }
 
-// sendQuery is used to multicast a query out
+// sendQuery is used to multicast a query out.
+// Queries are written to the multicast destination (RFC 6762). Some devices only
+// answer queries that originate on a multicast socket, so we send via the
+// multicast connections when available. We also still write from the unicast
+// sockets for environments where loopback/self-discovery relies on them.
 func (c *client) sendQuery(q *dns.Msg) error {
 	buf, err := q.Pack()
 	if err != nil {
 		return err
 	}
+	var last error
+	if c.ipv4MulticastConn != nil {
+		if _, err = c.ipv4MulticastConn.WriteToUDP(buf, ipv4Addr); err != nil {
+			last = err
+		}
+	}
+	if c.ipv6MulticastConn != nil {
+		if _, err = c.ipv6MulticastConn.WriteToUDP(buf, ipv6Addr); err != nil {
+			last = err
+		}
+	}
 	if c.ipv4UnicastConn != nil {
-		_, err = c.ipv4UnicastConn.WriteToUDP(buf, ipv4Addr)
-		if err != nil {
-			return err
+		if _, err = c.ipv4UnicastConn.WriteToUDP(buf, ipv4Addr); err != nil {
+			last = err
 		}
 	}
 	if c.ipv6UnicastConn != nil {
-		_, err = c.ipv6UnicastConn.WriteToUDP(buf, ipv6Addr)
-		if err != nil {
-			return err
+		if _, err = c.ipv6UnicastConn.WriteToUDP(buf, ipv6Addr); err != nil {
+			last = err
 		}
 	}
-	return nil
+	return last
 }
 
 // recv is used to receive until we get a shutdown
