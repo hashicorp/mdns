@@ -398,35 +398,42 @@ func (c *client) query(params *QueryParam) error {
 }
 
 // sendQuery is used to multicast a query out.
-// Queries are written to the multicast destination (RFC 6762). Some devices only
-// answer queries that originate on a multicast socket, so we send via the
+//
+// Queries are written to the multicast destination (RFC 6762). Some devices
+// only answer queries that originate on a multicast socket, so we send via the
 // multicast connections when available. We also still write from the unicast
 // sockets for environments where loopback/self-discovery relies on them.
+//
+// Error handling: each available socket is attempted. If any write succeeds the
+// query is considered sent and nil is returned. Only when every attempted write
+// fails do we surface the last write error (matching the original "fail if we
+// could not send" contract without aborting mid-attempt).
 func (c *client) sendQuery(q *dns.Msg) error {
 	buf, err := q.Pack()
 	if err != nil {
 		return err
 	}
+
 	var last error
-	if c.ipv4MulticastConn != nil {
-		if _, err = c.ipv4MulticastConn.WriteToUDP(buf, ipv4Addr); err != nil {
-			last = err
+	var wrote bool
+	tryWrite := func(conn *net.UDPConn, addr *net.UDPAddr) {
+		if conn == nil {
+			return
 		}
+		if _, err := conn.WriteToUDP(buf, addr); err != nil {
+			last = err
+			return
+		}
+		wrote = true
 	}
-	if c.ipv6MulticastConn != nil {
-		if _, err = c.ipv6MulticastConn.WriteToUDP(buf, ipv6Addr); err != nil {
-			last = err
-		}
-	}
-	if c.ipv4UnicastConn != nil {
-		if _, err = c.ipv4UnicastConn.WriteToUDP(buf, ipv4Addr); err != nil {
-			last = err
-		}
-	}
-	if c.ipv6UnicastConn != nil {
-		if _, err = c.ipv6UnicastConn.WriteToUDP(buf, ipv6Addr); err != nil {
-			last = err
-		}
+
+	tryWrite(c.ipv4MulticastConn, ipv4Addr)
+	tryWrite(c.ipv6MulticastConn, ipv6Addr)
+	tryWrite(c.ipv4UnicastConn, ipv4Addr)
+	tryWrite(c.ipv6UnicastConn, ipv6Addr)
+
+	if wrote {
+		return nil
 	}
 	return last
 }
