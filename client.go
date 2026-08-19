@@ -65,19 +65,21 @@ func DefaultParams(service string) *QueryParam {
 	}
 }
 
-// Query looks up a given service, in a domain, waiting at most
-// for a timeout before finishing the query. The results are streamed
-// to a channel. Sends will not block, so clients should make sure to
-// either read or buffer.
+// Query looks up a given service, in a domain, waiting at most for
+// a timeout before finishing the query. The results are sent to the
+// params.Entries channel. If a result cannot be sent to params.Entries
+// immediately, it will be discarded. A large buffer on the channel can
+// ensure that no result is lost.
 func Query(params *QueryParam) error {
 	return QueryContext(context.Background(), params)
 }
 
 // QueryContext looks up a given service, in a domain, waiting at most
-// for a timeout before finishing the query. The results are streamed
-// to a channel. Sends will not block, so clients should make sure to
-// either read or buffer. QueryContext will attempt to stop the query
-// on cancellation.
+// for a timeout before finishing the query. The results are sent to the
+// params.Entries channel. If a result cannot be sent to params.Entries
+// immediately, it will be discarded. A large buffer on the channel can
+// ensure that no result is lost. QueryContext will attempt to stop the
+// query on cancellation.
 func QueryContext(ctx context.Context, params *QueryParam) error {
 	if params.Logger == nil {
 		params.Logger = log.Default()
