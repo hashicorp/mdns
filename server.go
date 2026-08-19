@@ -237,7 +237,11 @@ func (s *Server) handleQuery(query *dns.Msg, from net.Addr) error {
 	}
 
 	if mresp := resp(false); mresp != nil {
-		if err := s.sendResponse(mresp, from, false); err != nil {
+		var dest = ipv4Addr
+		if ( from.String()[0] == '[' ){
+			dest = ipv6Addr
+		}
+		if err := s.sendResponse(mresp, dest, false); err != nil {
 			return fmt.Errorf("mdns: error sending multicast response: %v", err)
 		}
 	}
