@@ -209,6 +209,19 @@ func newClient(v4 bool, v6 bool, logger *log.Logger) (*client, error) {
 		return nil, fmt.Errorf("at least one of IPv4 and IPv6 must be enabled for querying")
 	}
 
+	// sendQuery writes from the multicast sockets. Loopback is required so a
+	// server on the same host still receives those queries.
+	if mconn4 != nil {
+		if err := ipv4.NewPacketConn(mconn4).SetMulticastLoopback(true); err != nil {
+			logger.Printf("[ERR] mdns: Failed to set IPv4 multicast loopback: %v", err)
+		}
+	}
+	if mconn6 != nil {
+		if err := ipv6.NewPacketConn(mconn6).SetMulticastLoopback(true); err != nil {
+			logger.Printf("[ERR] mdns: Failed to set IPv6 multicast loopback: %v", err)
+		}
+	}
+
 	c := &client{
 		use_ipv4:          v4,
 		use_ipv6:          v6,
@@ -397,20 +410,22 @@ func (c *client) query(params *QueryParam) error {
 	}
 }
 
-// sendQuery is used to multicast a query out
+// sendQuery is used to multicast a query out.
+// Queries are written from the multicast sockets (UDP source port 5353) so
+// devices that ignore queries from ephemeral unicast ports will still answer.
 func (c *client) sendQuery(q *dns.Msg) error {
 	buf, err := q.Pack()
 	if err != nil {
 		return err
 	}
-	if c.ipv4UnicastConn != nil {
-		_, err = c.ipv4UnicastConn.WriteToUDP(buf, ipv4Addr)
+	if c.ipv4MulticastConn != nil {
+		_, err = c.ipv4MulticastConn.WriteToUDP(buf, ipv4Addr)
 		if err != nil {
 			return err
 		}
 	}
-	if c.ipv6UnicastConn != nil {
-		_, err = c.ipv6UnicastConn.WriteToUDP(buf, ipv6Addr)
+	if c.ipv6MulticastConn != nil {
+		_, err = c.ipv6MulticastConn.WriteToUDP(buf, ipv6Addr)
 		if err != nil {
 			return err
 		}
