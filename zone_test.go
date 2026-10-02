@@ -276,3 +276,42 @@ func TestMDNSService_serviceEnum_PTR(t *testing.T) {
 		t.Fatalf("bad PTR record %v: got %v, want %v", ptr, got, want)
 	}
 }
+
+func TestMDNSService_InstanceAddr_TXT_Nil(t *testing.T) {
+	for _, txt := range [][]string{nil, {}} {
+		s, err := NewMDNSService(
+			"hostname",
+			"_http._tcp",
+			"local.",
+			"testhost.",
+			80,
+			[]net.IP{net.ParseIP("192.168.0.42")},
+			txt,
+		)
+		if err != nil {
+			t.Fatalf("err: %v", err)
+		}
+
+		q := dns.Question{
+			Name:  "hostname._http._tcp.local.",
+			Qtype: dns.TypeTXT,
+		}
+		recs := s.Records(q)
+		if len(recs) != 0 {
+			t.Fatalf("expected no TXT records when TXT is nil or empty, got: %v", recs)
+		}
+
+		// ANY query should not include TXT record when TXT is nil or empty
+		q.Qtype = dns.TypeANY
+		recs = s.Records(q)
+		for _, rr := range recs {
+			if _, ok := rr.(*dns.TXT); ok {
+				t.Fatalf("expected no TXT record in ANY response when TXT is nil or empty, got: %v", recs)
+			}
+		}
+		if len(recs) == 0 {
+			t.Fatal("expected SRV/address records in ANY response")
+		}
+	}
+}
+
