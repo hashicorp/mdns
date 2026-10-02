@@ -295,6 +295,9 @@ func (m *MDNSService) instanceRecords(q dns.Question) []dns.RR {
 		return recs
 
 	case dns.TypeTXT:
+		if len(m.TXT) == 0 {
+			return nil
+		}
 		txt := &dns.TXT{
 			Hdr: dns.RR_Header{
 				Name:   q.Name,
