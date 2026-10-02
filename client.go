@@ -466,5 +466,18 @@ func ensureName(inprogress map[string]*ServiceEntry, name string) *ServiceEntry 
 // alias is used to setup an alias between two entries
 func alias(inprogress map[string]*ServiceEntry, src, dst string) {
 	srcEntry := ensureName(inprogress, src)
+	if existingDst, exists := inprogress[dst]; exists {
+		if existingDst.AddrV4 != nil && srcEntry.AddrV4 == nil {
+			srcEntry.AddrV4 = existingDst.AddrV4
+			srcEntry.Addr = existingDst.AddrV4
+		}
+		if existingDst.AddrV6 != nil && srcEntry.AddrV6 == nil {
+			srcEntry.AddrV6 = existingDst.AddrV6
+			srcEntry.AddrV6IPAddr = existingDst.AddrV6IPAddr
+			if srcEntry.Addr == nil {
+				srcEntry.Addr = existingDst.AddrV6
+			}
+		}
+	}
 	inprogress[dst] = srcEntry
 }
