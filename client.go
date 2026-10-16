@@ -141,30 +141,33 @@ func Lookup(service string, entries chan<- *ServiceEntry) error {
 	return Query(params)
 }
 
-// sharedConns are the sockets every query in this process reuses.
+// sharedConns are the unicast sockets every query in this process reuses.
 //
-// Upstream opened a fresh set of sockets for every query. Sent from a fresh
-// ephemeral unicast port each time, every query looked like a brand-new UDP
-// flow to every other host on the link. Callers that query periodically —
-// Consul's go-discover mdns provider runs one per retry_join attempt — thereby
-// create an unbounded stream of new flows on every LAN host, and hosts that
-// keep per-flow state for the remote endpoints of their mDNS socket (macOS
-// content filters do, without ever reclaiming it) degrade over time. With
-// long-lived sockets the source ports stay stable: one flow per address
-// family, for the life of the process. Queries are unchanged on the wire.
+// Upstream opened fresh sockets for every query. Queries are sent from the
+// unicast socket, so each query left from a new ephemeral port and looked
+// like a brand-new UDP flow to every other host on the link. Callers that
+// query periodically — Consul's go-discover mdns provider runs one per
+// retry_join attempt — thereby create an unbounded stream of new flows on
+// every LAN host, and hosts that keep per-flow state for the remote endpoints
+// of their mDNS socket (macOS content filters do, without ever reclaiming it)
+// degrade over time. Keeping the unicast sockets for the life of the process
+// keeps the source ports stable: one flow per address family.
 //
-// The sockets are replaced only after a send or receive error (for example
-// the interface they were bound through went away), so the next query binds
-// afresh.
+// The multicast sockets are still opened and closed per query, as upstream
+// does: nothing is sent from them, so they never create flows elsewhere, and
+// holding a wildcard :5353 socket open between queries with no reader would
+// only pin a full receive buffer and could swallow unicast datagrams meant
+// for the host's own mDNS responder.
+//
+// The unicast sockets are replaced after a send or receive error (for
+// example the interface they were bound through went away), so the next
+// query binds afresh. Queries are unchanged on the wire.
 type sharedConns struct {
 	v4, v6      bool // what was requested when the set was opened
 	ifacePinned bool // a query set a multicast interface on these sockets
 
 	ipv4UnicastConn *net.UDPConn
 	ipv6UnicastConn *net.UDPConn
-
-	ipv4MulticastConn *net.UDPConn
-	ipv6MulticastConn *net.UDPConn
 }
 
 var (
@@ -173,12 +176,8 @@ var (
 	shared   *sharedConns
 )
 
-func (s *sharedConns) all() []*net.UDPConn {
-	return []*net.UDPConn{s.ipv4UnicastConn, s.ipv6UnicastConn, s.ipv4MulticastConn, s.ipv6MulticastConn}
-}
-
 func (s *sharedConns) close() {
-	for _, c := range s.all() {
+	for _, c := range []*net.UDPConn{s.ipv4UnicastConn, s.ipv6UnicastConn} {
 		if c != nil {
 			c.Close()
 		}
@@ -191,11 +190,11 @@ type client struct {
 	use_ipv4 bool
 	use_ipv6 bool
 
-	ipv4UnicastConn *net.UDPConn
-	ipv6UnicastConn *net.UDPConn
+	ipv4UnicastConn *net.UDPConn // shared, outlives the client
+	ipv6UnicastConn *net.UDPConn // shared, outlives the client
 
-	ipv4MulticastConn *net.UDPConn
-	ipv6MulticastConn *net.UDPConn
+	ipv4MulticastConn *net.UDPConn // per client
+	ipv6MulticastConn *net.UDPConn // per client
 
 	conns    *sharedConns
 	recvWG   sync.WaitGroup // receivers started by query
@@ -206,9 +205,10 @@ type client struct {
 	log *log.Logger
 }
 
-// NewClient creates a new mdns Client that can be used to query
-// for records. It reuses the process-wide sockets, opening them on first use
-// or after they were dropped. The caller must hold sharedMu.
+// NewClient creates a new mdns Client that can be used to query for records.
+// It reuses the process-wide unicast sockets, opening them on first use or
+// after they were dropped, and opens its own multicast sockets. The caller
+// must hold sharedMu.
 func newClient(v4 bool, v6 bool, logger *log.Logger) (*client, error) {
 	if !v4 && !v6 {
 		return nil, fmt.Errorf("Must enable at least one of IPv4 and IPv6 querying")
@@ -218,19 +218,61 @@ func newClient(v4 bool, v6 bool, logger *log.Logger) (*client, error) {
 		shared = nil
 	}
 	if shared == nil {
-		conns, err := openConns(v4, v6, logger)
+		conns, err := openUnicast(v4, v6, logger)
 		if err != nil {
 			return nil, err
 		}
 		shared = conns
 	}
+	uconn4, uconn6 := shared.ipv4UnicastConn, shared.ipv6UnicastConn
+
+	// Establish multicast connections
+	var mconn4, mconn6 *net.UDPConn
+	var err error
+	if uconn4 != nil {
+		mconn4, err = net.ListenMulticastUDP("udp4", nil, ipv4Addr)
+		if err != nil {
+			logger.Printf("[ERR] mdns: Failed to bind to udp4 port: %v", err)
+		}
+	}
+	if uconn6 != nil {
+		mconn6, err = net.ListenMulticastUDP("udp6", nil, ipv6Addr)
+		if err != nil {
+			logger.Printf("[ERR] mdns: Failed to bind to udp6 port: %v", err)
+		}
+	}
+	if mconn4 == nil && mconn6 == nil {
+		return nil, fmt.Errorf("failed to bind to any multicast udp port")
+	}
+
+	// Check that unicast and multicast connections have been made for IPv4 and IPv6
+	// and disable the respective protocol if not.
+	use4, use6 := uconn4 != nil && mconn4 != nil, uconn6 != nil && mconn6 != nil
+	if !use4 {
+		logger.Printf("[INFO] mdns: Failed to listen to both unicast and multicast on IPv4")
+		if mconn4 != nil {
+			mconn4.Close()
+		}
+		uconn4, mconn4 = nil, nil
+	}
+	if !use6 {
+		logger.Printf("[INFO] mdns: Failed to listen to both unicast and multicast on IPv6")
+		if mconn6 != nil {
+			mconn6.Close()
+		}
+		uconn6, mconn6 = nil, nil
+	}
+	if !use4 && !use6 {
+		return nil, fmt.Errorf("at least one of IPv4 and IPv6 must be enabled for querying")
+	}
+
 	c := &client{
-		use_ipv4:          shared.ipv4UnicastConn != nil,
-		use_ipv6:          shared.ipv6UnicastConn != nil,
-		ipv4MulticastConn: shared.ipv4MulticastConn,
-		ipv6MulticastConn: shared.ipv6MulticastConn,
-		ipv4UnicastConn:   shared.ipv4UnicastConn,
-		ipv6UnicastConn:   shared.ipv6UnicastConn,
+		use_ipv4:          use4,
+		use_ipv6:          use6,
+		ipv4MulticastConn: mconn4,
+		ipv6MulticastConn: mconn6,
+		ipv4UnicastConn:   uconn4,
+		ipv6UnicastConn:   uconn6,
 		conns:             shared,
 		closedCh:          make(chan struct{}),
 		log:               logger,
@@ -238,20 +280,11 @@ func newClient(v4 bool, v6 bool, logger *log.Logger) (*client, error) {
 	return c, nil
 }
 
-// openConns binds the unicast and multicast sockets for the requested
-// families (the upstream per-query binding logic, run once per socket set).
-func openConns(v4 bool, v6 bool, logger *log.Logger) (*sharedConns, error) {
-	requested4, requested6 := v4, v6
-
+// openUnicast binds the shared unicast sockets for the requested families.
+func openUnicast(v4 bool, v6 bool, logger *log.Logger) (*sharedConns, error) {
 	// TODO(reddaly): At least attempt to bind to the port required in the spec.
-	// Create a IPv4 listener
-	var uconn4 *net.UDPConn
-	var uconn6 *net.UDPConn
-	var mconn4 *net.UDPConn
-	var mconn6 *net.UDPConn
+	var uconn4, uconn6 *net.UDPConn
 	var err error
-
-	// Establish unicast connections
 	if v4 {
 		uconn4, err = net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4zero, Port: 0})
 		if err != nil {
@@ -267,95 +300,44 @@ func openConns(v4 bool, v6 bool, logger *log.Logger) (*sharedConns, error) {
 	if uconn4 == nil && uconn6 == nil {
 		return nil, fmt.Errorf("failed to bind to any unicast udp port")
 	}
-
-	// Establish multicast connections
-	if v4 {
-		mconn4, err = net.ListenMulticastUDP("udp4", nil, ipv4Addr)
-		if err != nil {
-			logger.Printf("[ERR] mdns: Failed to bind to udp4 port: %v", err)
-		}
-	}
-	if v6 {
-		mconn6, err = net.ListenMulticastUDP("udp6", nil, ipv6Addr)
-		if err != nil {
-			logger.Printf("[ERR] mdns: Failed to bind to udp6 port: %v", err)
-		}
-	}
-	if mconn4 == nil && mconn6 == nil {
-		for _, c := range []*net.UDPConn{uconn4, uconn6} {
-			if c != nil {
-				c.Close()
-			}
-		}
-		return nil, fmt.Errorf("failed to bind to any multicast udp port")
-	}
-
-	// Check that unicast and multicast connections have been made for IPv4 and IPv6
-	// and disable the respective protocol if not.
-	if uconn4 == nil || mconn4 == nil {
-		logger.Printf("[INFO] mdns: Failed to listen to both unicast and multicast on IPv4")
-		for _, c := range []*net.UDPConn{uconn4, mconn4} {
-			if c != nil {
-				c.Close()
-			}
-		}
-		uconn4 = nil
-		mconn4 = nil
-		v4 = false
-	}
-	if uconn6 == nil || mconn6 == nil {
-		logger.Printf("[INFO] mdns: Failed to listen to both unicast and multicast on IPv6")
-		for _, c := range []*net.UDPConn{uconn6, mconn6} {
-			if c != nil {
-				c.Close()
-			}
-		}
-		uconn6 = nil
-		mconn6 = nil
-		v6 = false
-	}
-	if !v4 && !v6 {
-		return nil, fmt.Errorf("at least one of IPv4 and IPv6 must be enabled for querying")
-	}
-
-	return &sharedConns{
-		v4:                requested4,
-		v6:                requested6,
-		ipv4MulticastConn: mconn4,
-		ipv6MulticastConn: mconn6,
-		ipv4UnicastConn:   uconn4,
-		ipv6UnicastConn:   uconn6,
-	}, nil
+	return &sharedConns{v4: v4, v6: v6, ipv4UnicastConn: uconn4, ipv6UnicastConn: uconn6}, nil
 }
 
-// markBroken records that a shared socket failed, so Close drops the set and
+// markBroken records that a socket failed, so Close drops the shared set and
 // the next query binds new sockets.
 func (c *client) markBroken() {
 	atomic.StoreInt32(&c.broken, 1)
 }
 
-// Close ends the query: it stops and joins this client's receivers without
-// closing the shared sockets (unless one of them failed, in which case the
-// whole set is dropped). The caller must hold sharedMu.
+// Close ends the query: it stops and joins this client's receivers and closes
+// its multicast sockets, but keeps the shared unicast sockets (unless a
+// socket failed, in which case the shared set is dropped too). The caller
+// must hold sharedMu.
 func (c *client) Close() error {
 	if !atomic.CompareAndSwapInt32(&c.closed, 0, 1) {
 		// something else already closed it
 		return nil
 	}
 
-	c.log.Printf("[INFO] mdns: Closing client (shared sockets v4=%v v6=%v)", c.use_ipv4, c.use_ipv6)
+	c.log.Printf("[INFO] mdns: Closing client (shared unicast sockets kept: v4=%v v6=%v)", c.use_ipv4, c.use_ipv6)
 	close(c.closedCh)
 
 	// Unblock receivers parked in ReadFromUDP, wait for them, then clear the
-	// deadline so the next query starts with blocking reads again.
-	conns := c.conns.all()
-	for _, conn := range conns {
+	// deadline on the shared sockets so the next query reads blocking again.
+	unicast := []*net.UDPConn{c.ipv4UnicastConn, c.ipv6UnicastConn}
+	multicast := []*net.UDPConn{c.ipv4MulticastConn, c.ipv6MulticastConn}
+	for _, conn := range append(unicast, multicast...) {
 		if conn != nil {
 			conn.SetReadDeadline(time.Now())
 		}
 	}
 	c.recvWG.Wait()
-	for _, conn := range conns {
+	for _, conn := range multicast {
+		if conn != nil {
+			conn.Close()
+		}
+	}
+	for _, conn := range unicast {
 		if conn != nil {
 			conn.SetReadDeadline(time.Time{})
 		}

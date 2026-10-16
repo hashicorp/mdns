@@ -89,8 +89,8 @@ func TestClient_SocketsReusedAcrossQueries(t *testing.T) {
 		t.Fatalf("err: %v", err)
 	}
 	defer c2.Close()
-	if c2.ipv4UnicastConn != c1.ipv4UnicastConn || c2.ipv4MulticastConn != c1.ipv4MulticastConn {
-		t.Fatal("second client opened new sockets")
+	if c2.ipv4UnicastConn != c1.ipv4UnicastConn {
+		t.Fatal("second client opened a new unicast socket")
 	}
 	if got := unicastPort(c2); got != port {
 		t.Fatalf("unicast source port changed: %d -> %d", port, got)
@@ -112,6 +112,32 @@ func TestClient_SocketsReusedAcrossQueries(t *testing.T) {
 	case <-msgCh:
 	case <-time.After(2 * time.Second):
 		t.Fatal("receiver on reused socket got nothing (stale read deadline?)")
+	}
+}
+
+// TestClient_MulticastSocketClosedBetweenQueries: the per-query multicast
+// socket (a wildcard :5353 listener) must not outlive the query — held open
+// with no reader it would pin a full buffer and could swallow unicast mDNS
+// datagrams meant for the host's own responder.
+func TestClient_MulticastSocketClosedBetweenQueries(t *testing.T) {
+	resetShared(t)
+	sharedMu.Lock()
+	defer sharedMu.Unlock()
+
+	c, err := newClient(true, false, quiet)
+	if err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	mconn := c.ipv4MulticastConn
+	if mconn == nil {
+		t.Fatal("no multicast socket")
+	}
+	c.Close()
+	if err := mconn.SetReadDeadline(time.Now()); err == nil {
+		t.Fatal("multicast socket still open after Close")
+	}
+	if shared == nil || shared.ipv4UnicastConn == nil {
+		t.Fatal("shared unicast socket dropped by a clean Close")
 	}
 }
 
