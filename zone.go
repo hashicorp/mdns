@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/miekg/dns"
 )
@@ -26,6 +27,7 @@ type Zone interface {
 
 // MDNSService is used to export a named service by implementing a Zone
 type MDNSService struct {
+	mutex    sync.Mutex
 	Instance string   // Instance name (e.g. "hostService name")
 	Service  string   // Service name (e.g. "_http._tcp.")
 	Domain   string   // If blank, assumes "local"
@@ -302,9 +304,21 @@ func (m *MDNSService) instanceRecords(q dns.Question) []dns.RR {
 				Class:  dns.ClassINET,
 				Ttl:    defaultTTL,
 			},
-			Txt: m.TXT,
+			Txt: m.GetTXT(),
 		}
 		return []dns.RR{txt}
 	}
 	return nil
+}
+
+func (m *MDNSService) UpdateTXT(txt []string) {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	m.TXT = txt
+}
+
+func (m *MDNSService) GetTXT() []string {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+	return m.TXT
 }
